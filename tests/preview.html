@@ -1,0 +1,156 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Ecowitt cards preview</title>
+  <style>
+    /* A minimal stand-in for the Home Assistant theme variables the cards use. */
+    :root {
+      --primary-text-color: #212121;
+      --secondary-text-color: #727272;
+      --disabled-color: #bdbdbd;
+      --divider-color: #e0e0e0;
+      --primary-color: #03a9f4;
+      --card-background-color: #fff;
+      --secondary-background-color: #f5f5f5;
+      --success-color: #4caf50;
+      --warning-color: #ff9800;
+      --error-color: #f44336;
+      --info-color: #039be5;
+      --ha-card-border-radius: 12px;
+      --page-bg: #fafafa;
+    }
+    body.dark {
+      --primary-text-color: #e1e1e1;
+      --secondary-text-color: #9b9b9b;
+      --disabled-color: #6f6f6f;
+      --divider-color: #3f3f3f;
+      --card-background-color: #1c1c1c;
+      --secondary-background-color: #282828;
+      --page-bg: #111;
+    }
+    body {
+      margin: 0; padding: 24px;
+      background: var(--page-bg);
+      font-family: Roboto, system-ui, sans-serif;
+      color: var(--primary-text-color);
+    }
+    .wrap {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
+      gap: 16px;
+      max-width: 1120px;
+    }
+    h1 { font-size: 1.1rem; font-weight: 500; margin: 0 0 16px; }
+    button { margin-bottom: 16px; padding: 6px 12px; }
+  </style>
+</head>
+<body>
+  <h1>Ecowitt cards — preview (fixture data)</h1>
+  <button id="theme">Toggle dark</button>
+  <div class="wrap" id="wrap"></div>
+
+  <script>
+    /* Stand-ins for the two HA elements the cards rely on. */
+    customElements.define("ha-card", class extends HTMLElement {
+      connectedCallback() {
+        this.style.display = "block";
+        this.style.background = "var(--card-background-color)";
+        this.style.borderRadius = "var(--ha-card-border-radius)";
+        this.style.boxShadow = "0 1px 3px rgba(0,0,0,.12)";
+      }
+    });
+    customElements.define("ha-icon", class extends HTMLElement {
+      connectedCallback() {
+        this.style.display = "inline-block";
+        this.style.width = "15px";
+        this.style.height = "15px";
+        this.style.borderRadius = "3px";
+        this.style.background = "currentColor";
+        this.style.opacity = ".35";
+        this.style.verticalAlign = "-2px";
+      }
+    });
+  </script>
+  <script src="../dist/ecowitt-cards.js"></script>
+  <script>
+    (async () => {
+      const dump = await (await fetch("./fixtures/devices.json")).json();
+
+      const hass = { states: {}, entities: {}, devices: {} };
+      const byName = {};
+      let n = 0;
+      for (const [devName, info] of Object.entries(dump)) {
+        const id = "dev" + ++n;
+        byName[devName] = id;
+        hass.devices[id] = { id, name: devName };
+        for (const e of info.entities) {
+          hass.entities[e.entity_id] = { device_id: id };
+          hass.states[e.entity_id] = {
+            state: e.state,
+            attributes: {
+              friendly_name: e.name,
+              unit_of_measurement: e.unit,
+              device_class: e.device_class,
+            },
+          };
+        }
+      }
+
+      /* Nudge a few values off their calm real-world readings so the
+       * dynamic parts (wind needle, UV band, rain bars) are visible. */
+      const set = (id, v) => { if (hass.states[id]) hass.states[id].state = v; };
+      set("sensor.ecowitt_wind_speed_13360", "18.4");
+      set("sensor.ecowitt_wind_gust_13360", "27.9");
+      set("sensor.ecowitt_max_daily_gust_13360", "41.2");
+      set("sensor.ecowitt_uv_index_13360", "7");
+      set("sensor.ecowitt_solar_radiation_13360", "612");
+      set("sensor.ecowitt_solar_lux_13360", "74300");
+      set("sensor.ecowitt_rain_rate_13360", "3.2");
+      set("sensor.ecowitt_hourly_rain_13360", "2.4");
+      set("sensor.ecowitt_daily_rain_13360", "11.8");
+      set("sensor.ecowitt_24h_rain_13360", "14.2");
+      set("sensor.ecowitt_weekly_rain_13360", "23.6");
+      set("sensor.ecowitt_monthly_rain_13360", "61.4");
+      set("sensor.ecowitt_yearly_rain_13360", "402.8");
+      set("sensor.ecowitt_rain_event_13360", "11.8");
+      set("binary_sensor.ecowitt_rain_13360", "on");
+
+      const wsId = byName["Ecowitt Weather Station"];
+      const gwId = byName["Ecowitt Gateway"];
+      const wh40Id = byName["Ecowitt Rain Sensor"];
+      const soilCh1 = byName["Ecowitt Soil Moisture Sensor D42E2"];
+      const soilCh2 = byName["Ecowitt Soil Moisture Sensor D431A"];
+
+      /* Two rain cards on purpose: the WS90's piezo and the WH40 tipping
+       * bucket are independent sources, and the card has to read both. */
+      const cards = [
+        ["ecowitt-weather-card", wsId],
+        ["ecowitt-wind-card", wsId],
+        ["ecowitt-rain-card", wsId],
+        ["ecowitt-rain-card", wh40Id],
+        ["ecowitt-solar-card", wsId],
+        ["ecowitt-soil-card", soilCh1],
+        ["ecowitt-soil-card", soilCh2],
+        ["ecowitt-indoor-card", gwId],
+      ];
+
+      /* A device with no Ecowitt entities, to keep the empty state honest. */
+      cards.push(["ecowitt-wind-card", "device-that-does-not-exist"]);
+
+      const wrap = document.getElementById("wrap");
+      for (const [tag, device] of cards) {
+        const el = document.createElement(tag);
+        el.setConfig({ type: "custom:" + tag, device });
+        el.hass = hass;
+        wrap.appendChild(el);
+      }
+
+      window.__hass = hass; // handy when poking at the cards from devtools
+
+      document.getElementById("theme").onclick = () =>
+        document.body.classList.toggle("dark");
+    })();
+  </script>
+</body>
+</html>
