@@ -14,7 +14,7 @@
  * hard-codes an entity id and extra probes work without a code change.
  */
 
-const CARD_VERSION = "1.0.0";
+const CARD_VERSION = "1.1.0";
 
 console.info(
   `%c ECOWITT-CARDS %c ${CARD_VERSION} `,
@@ -227,6 +227,25 @@ const BASE_CSS = `
     text-overflow: ellipsis;
     white-space: nowrap;
   }
+  .head-right {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    flex: 0 0 auto;
+  }
+  .batt {
+    display: inline-flex;
+    align-items: center;
+    gap: 2px;
+    font-size: 0.72rem;
+    color: var(--secondary-text-color);
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+    cursor: pointer;
+  }
+  .batt ha-icon { --mdc-icon-size: 14px; color: inherit; }
+  .batt.low { color: var(--warning-color); }
+  .batt.critical { color: var(--error-color); }
   .dot {
     width: 8px; height: 8px; border-radius: 50%;
     background: var(--success-color);
@@ -242,12 +261,6 @@ const BASE_CSS = `
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(88px, 1fr));
     gap: 10px;
-  }
-  /* Fixed-width columns so a grid holding a single tile doesn't stretch
-   * it across the whole card. */
-  .grid.tight {
-    grid-template-columns: repeat(auto-fill, 118px);
-    justify-content: start;
   }
   .cell {
     background: var(--secondary-background-color);
@@ -403,8 +416,36 @@ class EcowittBase extends HTMLElement {
     return `
       <div class="head">
         <div class="title">${title}</div>
-        ${online ? `<div class="dot ${cls}" title="Connectivity"></div>` : ""}
+        <div class="head-right">
+          ${this._batteryChip()}
+          ${online ? `<div class="dot ${cls}" title="Connectivity"></div>` : ""}
+        </div>
       </div>`;
+  }
+
+  /* Battery reads as a glance-level fact rather than a metric worth a tile,
+   * so it sits in the header. It only earns colour once it matters. */
+  _batteryChip() {
+    const id = this._ids.battery || this._ids.soil_battery;
+    if (!id) return "";
+    const pct = num(this._hass, id);
+    if (pct === null) return "";
+
+    let cls = "";
+    let icon = "mdi:battery";
+    if (pct <= 15) {
+      cls = "critical";
+      icon = "mdi:battery-alert-variant-outline";
+    } else if (pct <= 30) {
+      cls = "low";
+      icon = "mdi:battery-30";
+    } else if (pct <= 70) {
+      icon = "mdi:battery-70";
+    }
+
+    return `<span class="batt ${cls}" data-entity="${id}" title="Battery">
+        <ha-icon icon="${icon}"></ha-icon>${Math.round(pct)}%
+      </span>`;
   }
 }
 
@@ -544,7 +585,6 @@ class EcowittWeatherCard extends EcowittBase {
       this._cell("solar_rad", "Solar", "mdi:solar-power-variant", 0),
       this._cell("press_rel", "Pressure", "mdi:gauge", 0),
       this._cell("vpd", "VPD", "mdi:leaf", 2),
-      this._cell("battery", "Battery", "mdi:battery", 0),
     ].join("");
 
     this._bindCells();
@@ -668,7 +708,6 @@ class EcowittRainCard extends EcowittBase {
           <div class="wet" id="wet"></div>
         </div>
         <div class="periods" id="periods"></div>
-        <div class="grid tight" id="grid"></div>
       </ha-card>`;
     this._built = true;
   }
@@ -724,12 +763,6 @@ class EcowittRainCard extends EcowittBase {
       })
       .join("");
 
-    /* A standalone tipping bucket lives outdoors on its own battery, so
-     * surface that here. The tile vanishes on a device that has no battery
-     * entity, e.g. rain read from the WS90's piezo. */
-    s.getElementById("grid").innerHTML = this._cell(
-      "battery", "Battery", "mdi:battery", 0
-    );
     this._bindCells();
   }
 
@@ -856,7 +889,6 @@ class EcowittSoilCard extends EcowittBase {
           <div class="bar"><i id="fill" style="width:0%"></i></div>
           <div class="zones"><span>Dry</span><span>Ideal</span><span>Saturated</span></div>
         </div>
-        <div class="grid" id="grid"></div>
       </ha-card>`;
     this._built = true;
   }
@@ -880,12 +912,6 @@ class EcowittSoilCard extends EcowittBase {
     fill.style.width = `${Math.max(0, Math.min(100, pct === null ? 0 : pct))}%`;
     fill.style.background = band.color;
 
-    /* The WH51 reports its own battery as a percentage that drops fast
-     * near end of life, so it earns a tile rather than a footnote. */
-    s.getElementById("grid").innerHTML = [
-      this._cell("soil_battery", "Battery", "mdi:battery", 0),
-      this._cell("channel", "Channel", "mdi:numeric", 0, false),
-    ].join("");
     this._bindCells();
   }
 
