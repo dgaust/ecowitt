@@ -14,7 +14,7 @@
  * hard-codes an entity id and extra probes work without a code change.
  */
 
-const CARD_VERSION = "1.7.0";
+const CARD_VERSION = "1.8.0";
 
 /* Plain text rather than a %c-styled banner: console styling can only take
  * literal colours, and nothing in this file should hardcode one. */
@@ -197,6 +197,64 @@ function soilBand(pct) {
   if (pct < 65) return { label: "Ideal", color: "var(--success-color)" };
   if (pct < 80) return { label: "Moist", color: "var(--info-color)" };
   return { label: "Saturated", color: "var(--info-color)" };
+}
+
+/* ------------------------------------------------------------------ *
+ * Metric tiles
+ *
+ * The catalogue of tiles the weather card can show. `metrics` in the card
+ * config is an ordered list of these keys; the editor adds, removes and
+ * reorders it. Anything the selected device doesn't report is skipped at
+ * render time, so a list may safely name a tile the hardware lacks.
+ * ------------------------------------------------------------------ */
+
+const METRIC_CATALOGUE = {
+  temp_out: { label: "Temperature", icon: "mdi:thermometer", digits: 1 },
+  feels_like: { label: "Feels like", icon: "mdi:thermometer-lines", digits: 1 },
+  dewpoint: { label: "Dew point", icon: "mdi:water-thermometer", digits: 1 },
+  hum_out: { label: "Humidity", icon: "mdi:water-percent", digits: 0 },
+  wind_speed: { label: "Wind", icon: "mdi:weather-windy", digits: 1 },
+  wind_gust: { label: "Gust", icon: "mdi:weather-windy", digits: 1 },
+  max_gust: { label: "Max gust", icon: "mdi:speedometer-medium", digits: 1 },
+  wind_dir: { label: "Direction", icon: "mdi:compass-outline", digits: 0 },
+  wind_dir_avg: { label: "Avg direction", icon: "mdi:compass-outline", digits: 0 },
+  rain_rate: { label: "Rain rate", icon: "mdi:speedometer", digits: 1 },
+  rain_hourly: { label: "Rain this hour", icon: "mdi:weather-rainy", digits: 1 },
+  rain_daily: { label: "Rain today", icon: "mdi:weather-pouring", digits: 1 },
+  rain_24h: { label: "Rain 24 hours", icon: "mdi:weather-pouring", digits: 1 },
+  rain_weekly: { label: "Rain this week", icon: "mdi:weather-pouring", digits: 1 },
+  rain_monthly: { label: "Rain this month", icon: "mdi:weather-pouring", digits: 1 },
+  rain_yearly: { label: "Rain this year", icon: "mdi:weather-pouring", digits: 1 },
+  rain_event: { label: "Rain event", icon: "mdi:weather-pouring", digits: 1 },
+  uv: { label: "UV index", icon: "mdi:weather-sunny-alert", digits: 0, noUnit: true },
+  solar_rad: { label: "Solar", icon: "mdi:solar-power-variant", digits: 0 },
+  solar_lux: { label: "Illuminance", icon: "mdi:white-balance-sunny", digits: 0 },
+  press_rel: { label: "Pressure", icon: "mdi:gauge", digits: 0 },
+  press_abs: { label: "Absolute pressure", icon: "mdi:gauge-low", digits: 0 },
+  vpd: { label: "VPD", icon: "mdi:leaf", digits: 2 },
+  temp_in: { label: "Indoor temperature", icon: "mdi:home-thermometer", digits: 1 },
+  hum_in: { label: "Indoor humidity", icon: "mdi:water-percent", digits: 0 },
+  soil_moisture: { label: "Soil moisture", icon: "mdi:watering-can", digits: 0 },
+  battery: { label: "Battery", icon: "mdi:battery", digits: 0 },
+  signal: { label: "Signal", icon: "mdi:signal", digits: 0 },
+  voltage: { label: "Voltage", icon: "mdi:flash", digits: 2 },
+  cap_voltage: { label: "Capacitor voltage", icon: "mdi:flash-outline", digits: 2 },
+};
+
+/* What the weather card shows when `metrics` is absent — the set it had
+ * before the option existed, so upgrading changes nothing. */
+const DEFAULT_METRICS = [
+  "hum_out", "wind_gust", "rain_daily", "rain_rate",
+  "uv", "solar_rad", "press_rel", "vpd",
+];
+
+/* Resolve a config to its ordered metric keys, dropping anything that is
+ * not a known tile. An empty list is honoured — that means "no tiles", and
+ * must not silently fall back to the defaults. */
+function metricKeys(config) {
+  const chosen = config && config.metrics;
+  const list = Array.isArray(chosen) ? chosen : DEFAULT_METRICS;
+  return list.filter((k) => METRIC_CATALOGUE[k]);
 }
 
 /* ------------------------------------------------------------------ *
@@ -586,16 +644,12 @@ class EcowittWeatherCard extends EcowittBase {
         spd ? ` · ${fmt(h, spd, 1)} ${unit(h, spd)}` : ""
       }</div>`;
 
-    s.getElementById("grid").innerHTML = [
-      this._cell("hum_out", "Humidity", "mdi:water-percent", 0),
-      this._cell("wind_gust", "Gust", "mdi:weather-windy", 1),
-      this._cell("rain_daily", "Rain today", "mdi:weather-pouring", 1),
-      this._cell("rain_rate", "Rain rate", "mdi:speedometer", 1),
-      this._cell("uv", "UV index", "mdi:weather-sunny-alert", 0, false),
-      this._cell("solar_rad", "Solar", "mdi:solar-power-variant", 0),
-      this._cell("press_rel", "Pressure", "mdi:gauge", 0),
-      this._cell("vpd", "VPD", "mdi:leaf", 2),
-    ].join("");
+    s.getElementById("grid").innerHTML = metricKeys(this._config)
+      .map((key) => {
+        const m = METRIC_CATALOGUE[key];
+        return m ? this._cell(key, m.label, m.icon, m.digits, !m.noUnit) : "";
+      })
+      .join("");
 
     this._bindCells();
   }
@@ -608,7 +662,7 @@ class EcowittWeatherCard extends EcowittBase {
   }
 
   static getConfigElement() {
-    return document.createElement("ecowitt-card-editor");
+    return document.createElement("ecowitt-weather-card-editor");
   }
 }
 
@@ -1128,6 +1182,236 @@ class EcowittCardEditor extends HTMLElement {
     this._form.schema = this._schema();
     this._form.data = this._config;
   }
+
+  _emit(config) {
+    this._config = config;
+    this.dispatchEvent(
+      new CustomEvent("config-changed", { detail: { config } })
+    );
+  }
+}
+
+/* ------------------------------------------------------------------ *
+ * Weather card editor — metric tiles
+ *
+ * Modelled on the tile card's "features" editor: the chosen entries are a
+ * reorderable list you can delete from, with a picker below offering what
+ * is left. Reordering is native HTML5 drag and drop plus up/down buttons,
+ * rather than the frontend's internal ha-sortable, to stay dependency-free
+ * and keyboard-operable.
+ * ------------------------------------------------------------------ */
+
+const EDITOR_CSS = `
+  .ecw-section { margin-top: var(--ha-space-4, 16px); }
+  .ecw-h {
+    font-size: var(--ha-font-size-m, 14px);
+    font-weight: var(--ha-font-weight-medium, 500);
+    color: var(--primary-text-color);
+  }
+  .ecw-hint {
+    font-size: var(--ha-font-size-s, 12px);
+    color: var(--secondary-text-color);
+    margin-top: var(--ha-space-1, 4px);
+  }
+  .ecw-list {
+    display: flex; flex-direction: column;
+    gap: var(--ha-space-1, 4px);
+    margin-top: var(--ha-space-2, 8px);
+  }
+  .ecw-row {
+    display: flex; align-items: center;
+    gap: var(--ha-space-2, 8px);
+    padding: var(--ha-space-1, 4px) var(--ha-space-2, 8px);
+    background: var(--secondary-background-color);
+    border-radius: var(--ha-border-radius-md, 8px);
+    font-size: var(--ha-font-size-m, 14px);
+    color: var(--primary-text-color);
+  }
+  .ecw-row.dragging { opacity: 0.4; }
+  .ecw-row.over { outline: 2px solid var(--primary-color); }
+  .ecw-row .ecw-grip { cursor: grab; color: var(--secondary-text-color); }
+  .ecw-row .ecw-label { flex: 1; min-width: 0; }
+  .ecw-btn {
+    background: none; border: none; padding: var(--ha-space-1, 4px);
+    cursor: pointer; color: var(--secondary-text-color);
+    display: inline-flex; align-items: center;
+    border-radius: var(--ha-border-radius-sm, 4px);
+  }
+  .ecw-btn:hover:not(:disabled) { color: var(--primary-text-color); }
+  .ecw-btn:disabled { opacity: 0.3; cursor: default; }
+  .ecw-add {
+    display: flex; flex-wrap: wrap;
+    gap: var(--ha-space-1, 4px);
+    margin-top: var(--ha-space-2, 8px);
+  }
+  .ecw-chip {
+    display: inline-flex; align-items: center;
+    gap: var(--ha-space-1, 4px);
+    padding: var(--ha-space-1, 4px) var(--ha-space-2, 8px);
+    border: 1px solid var(--divider-color);
+    border-radius: var(--ha-border-radius-pill, 9999px);
+    background: none; cursor: pointer;
+    font-size: var(--ha-font-size-s, 12px);
+    color: var(--primary-text-color);
+  }
+  .ecw-chip:hover { border-color: var(--primary-color); }
+  .ecw-chip.absent { color: var(--secondary-text-color); }
+  .ecw-empty {
+    font-size: var(--ha-font-size-s, 12px);
+    color: var(--secondary-text-color);
+    padding: var(--ha-space-2, 8px) 0;
+  }
+  .ecw-btn ha-icon, .ecw-chip ha-icon, .ecw-grip { --mdc-icon-size: 18px; }
+`;
+
+class EcowittWeatherCardEditor extends EcowittCardEditor {
+  _render() {
+    super._render();
+    if (!this._hass || !this._config) return;
+
+    if (!this._section) {
+      const style = document.createElement("style");
+      style.textContent = EDITOR_CSS;
+      this.appendChild(style);
+
+      this._section = document.createElement("div");
+      this._section.className = "ecw-section";
+      this._section.innerHTML = `
+        <div class="ecw-h">Metrics</div>
+        <div class="ecw-hint">
+          Tiles shown below the temperature, in order. Drag or use the arrows
+          to reorder.
+        </div>
+        <div class="ecw-list"></div>
+        <div class="ecw-add"></div>`;
+      this.appendChild(this._section);
+    }
+    this._renderMetrics();
+  }
+
+  _keys() {
+    return metricKeys(this._config);
+  }
+
+  _setKeys(keys) {
+    this._emit({ ...this._config, metrics: keys });
+    this._renderMetrics();
+  }
+
+  _move(from, to) {
+    const keys = this._keys();
+    if (to < 0 || to >= keys.length) return;
+    const [item] = keys.splice(from, 1);
+    keys.splice(to, 0, item);
+    this._setKeys(keys);
+  }
+
+  _renderMetrics() {
+    const keys = this._keys();
+    const list = this._section.querySelector(".ecw-list");
+    const add = this._section.querySelector(".ecw-add");
+    list.textContent = "";
+    add.textContent = "";
+
+    if (!keys.length) {
+      const empty = document.createElement("div");
+      empty.className = "ecw-empty";
+      empty.textContent = "No metrics. Add one below.";
+      list.appendChild(empty);
+    }
+
+    keys.forEach((key, i) => {
+      const m = METRIC_CATALOGUE[key];
+      const row = document.createElement("div");
+      row.className = "ecw-row";
+      row.draggable = true;
+
+      const grip = document.createElement("ha-icon");
+      grip.className = "ecw-grip";
+      grip.setAttribute("icon", "mdi:drag");
+
+      const icon = document.createElement("ha-icon");
+      icon.setAttribute("icon", m.icon);
+
+      const label = document.createElement("span");
+      label.className = "ecw-label";
+      /* Flag entries the chosen device doesn't report: the tile is kept in
+       * the config but will not render, and saying so beats a silent gap. */
+      label.textContent = this._ids && !this._ids[key]
+        ? `${m.label} (not on this device)`
+        : m.label;
+      if (this._ids && !this._ids[key]) label.style.color = "var(--secondary-text-color)";
+
+      const mk = (iconName, title, disabled, fn) => {
+        const b = document.createElement("button");
+        b.className = "ecw-btn";
+        b.title = title;
+        b.disabled = disabled;
+        b.innerHTML = `<ha-icon icon="${iconName}"></ha-icon>`;
+        b.addEventListener("click", fn);
+        return b;
+      };
+
+      row.append(
+        grip, icon, label,
+        mk("mdi:arrow-up", "Move up", i === 0, () => this._move(i, i - 1)),
+        mk("mdi:arrow-down", "Move down", i === keys.length - 1, () => this._move(i, i + 1)),
+        mk("mdi:close", "Remove", false, () =>
+          this._setKeys(this._keys().filter((_, j) => j !== i)))
+      );
+
+      row.addEventListener("dragstart", (ev) => {
+        this._dragFrom = i;
+        row.classList.add("dragging");
+        ev.dataTransfer.effectAllowed = "move";
+        /* Firefox ignores drags without payload. */
+        ev.dataTransfer.setData("text/plain", key);
+      });
+      row.addEventListener("dragend", () => row.classList.remove("dragging"));
+      row.addEventListener("dragover", (ev) => {
+        ev.preventDefault();
+        row.classList.add("over");
+      });
+      row.addEventListener("dragleave", () => row.classList.remove("over"));
+      row.addEventListener("drop", (ev) => {
+        ev.preventDefault();
+        row.classList.remove("over");
+        if (this._dragFrom !== undefined && this._dragFrom !== i) {
+          this._move(this._dragFrom, i);
+        }
+        this._dragFrom = undefined;
+      });
+
+      list.appendChild(row);
+    });
+
+    /* Offer what the device actually reports first; the rest stay available
+     * so a dashboard can be configured before hardware is paired. */
+    const available = Object.keys(METRIC_CATALOGUE).filter((k) => !keys.includes(k));
+    const present = available.filter((k) => this._ids && this._ids[k]);
+    const absent = available.filter((k) => !this._ids || !this._ids[k]);
+
+    [...present, ...absent].forEach((key) => {
+      const m = METRIC_CATALOGUE[key];
+      const chip = document.createElement("button");
+      chip.className = "ecw-chip" + (present.includes(key) ? "" : " absent");
+      chip.innerHTML = `<ha-icon icon="${m.icon}"></ha-icon>`;
+      chip.appendChild(document.createTextNode(m.label));
+      chip.addEventListener("click", () => this._setKeys([...this._keys(), key]));
+      add.appendChild(chip);
+    });
+  }
+
+  set hass(hass) {
+    this._hass = hass;
+    this._ids = discover(hass, this._config && this._config.device);
+    super.hass = hass;
+  }
+
+  setConfig(config) {
+    this._ids = discover(this._hass, config && config.device);
+    super.setConfig(config);
+  }
 }
 
 /* ------------------------------------------------------------------ *
@@ -1154,6 +1438,9 @@ for (const [tag, cls] of CARDS) {
 }
 if (!customElements.get("ecowitt-card-editor")) {
   customElements.define("ecowitt-card-editor", EcowittCardEditor);
+}
+if (!customElements.get("ecowitt-weather-card-editor")) {
+  customElements.define("ecowitt-weather-card-editor", EcowittWeatherCardEditor);
 }
 
 window.customCards = window.customCards || [];

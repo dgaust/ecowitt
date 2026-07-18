@@ -38,7 +38,7 @@ const ctx = vm.createContext({
 vm.runInContext(
   fs.readFileSync(CARD, "utf8") +
     "\nglobalThis.__api = { discover, uvBand, soilBand, cardinal, windLabel," +
-    " compassSvg, fmt, num };",
+    " compassSvg, fmt, num, metricKeys, METRIC_CATALOGUE, DEFAULT_METRICS };",
   ctx
 );
 const api = ctx.__api;
@@ -152,6 +152,47 @@ check(
   ),
   "1029"
 );
+
+/* ---- configurable metric tiles ---- */
+console.log("metrics");
+const { metricKeys, METRIC_CATALOGUE, DEFAULT_METRICS } = api;
+
+check("absent config falls back to defaults",
+  metricKeys({}).join(","), DEFAULT_METRICS.join(","));
+check("non-array metrics falls back",
+  metricKeys({ metrics: "nope" }).join(","), DEFAULT_METRICS.join(","));
+check("order is preserved exactly",
+  metricKeys({ metrics: ["vpd", "uv", "hum_out"] }).join(","), "vpd,uv,hum_out");
+check("unknown keys are dropped",
+  metricKeys({ metrics: ["uv", "not_a_metric", "vpd"] }).join(","), "uv,vpd");
+/* An empty list must mean "no tiles", not "give me the defaults" — the
+ * difference between honouring a choice and overriding it. */
+check("empty list yields no tiles", metricKeys({ metrics: [] }).length, 0);
+check("duplicates are left alone",
+  metricKeys({ metrics: ["uv", "uv"] }).join(","), "uv,uv");
+
+assert("every default metric is in the catalogue",
+  DEFAULT_METRICS.every((k) => METRIC_CATALOGUE[k]));
+
+/* A catalogue entry the discovery rules can never produce would be a tile
+ * the user can add but that stays permanently blank. */
+const discoverable = new Set(Object.keys(ws).concat(Object.keys(gw), Object.keys(soil)));
+const knownKeys = new Set([
+  ...discoverable, "temp_in", "hum_in", "press_abs", "soil_moisture",
+  "rain_monthly", "rain_yearly", "wind_speed", "signal", "battery",
+]);
+const orphans = Object.keys(METRIC_CATALOGUE).filter((k) => !knownKeys.has(k));
+assert(`no catalogue entry is undiscoverable${orphans.length ? ": " + orphans.join(", ") : ""}`,
+  orphans.length === 0);
+
+assert("every catalogue entry has a label and icon",
+  Object.values(METRIC_CATALOGUE).every((m) => m.label && m.icon));
+
+/* The defaults must be what the card rendered before the option existed,
+ * so upgrading doesn't rearrange anyone's dashboard. */
+check("defaults match the pre-existing tile set",
+  DEFAULT_METRICS.join(","),
+  "hum_out,wind_gust,rain_daily,rain_rate,uv,solar_rad,press_rel,vpd");
 
 /* ---- helpers ---- */
 console.log("helpers");

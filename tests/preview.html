@@ -83,6 +83,13 @@
   <button id="scale">Font scale: 1</button>
   <div class="wrap" id="wrap"></div>
 
+  <h1 style="margin-top:32px">Weather card editor (live)</h1>
+  <div class="wrap" id="editorwrap">
+    <div id="editorhost" style="background:var(--card-background-color);
+         border-radius:12px;padding:16px;box-shadow:0 1px 3px rgba(0,0,0,.12)"></div>
+    <div id="editorpreview"></div>
+  </div>
+
   <script>
     /* Stand-ins for the two HA elements the cards rely on. */
     customElements.define("ha-card", class extends HTMLElement {
@@ -91,6 +98,16 @@
         this.style.background = "var(--card-background-color)";
         this.style.borderRadius = "var(--ha-card-border-radius)";
         this.style.boxShadow = "0 1px 3px rgba(0,0,0,.12)";
+      }
+    });
+    /* ha-form is a no-op here; the editor's own markup is what we exercise. */
+    customElements.define("ha-form", class extends HTMLElement {
+      connectedCallback() {
+        this.style.display = "block";
+        this.style.padding = "8px 0";
+        this.style.color = "var(--secondary-text-color)";
+        this.style.font = "12px Roboto, sans-serif";
+        this.textContent = "[ha-form: device + name]";
       }
     });
     customElements.define("ha-icon", class extends HTMLElement {
@@ -180,6 +197,28 @@
       }
 
       window.__hass = hass; // handy when poking at the cards from devtools
+
+      /* Live editor: config-changed drives a real weather card beside it,
+       * so add / remove / reorder can be exercised end to end. */
+      let editorConfig = { type: "custom:ecowitt-weather-card", device: wsId };
+      const editor = document.createElement("ecowitt-weather-card-editor");
+      const preview = document.createElement("ecowitt-weather-card");
+      const mount = () => {
+        preview.setConfig(editorConfig);
+        preview.hass = hass;
+      };
+      editor.hass = hass;
+      editor.setConfig(editorConfig);
+      editor.addEventListener("config-changed", (ev) => {
+        editorConfig = ev.detail.config;
+        window.__editorConfig = editorConfig;
+        mount();
+      });
+      document.getElementById("editorhost").appendChild(editor);
+      document.getElementById("editorpreview").appendChild(preview);
+      mount();
+      window.__editor = editor;
+      window.__editorConfig = editorConfig;
 
       document.getElementById("theme").onclick = () =>
         document.body.classList.toggle("dark");

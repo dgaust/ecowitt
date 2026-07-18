@@ -11,7 +11,7 @@ card.
 
 | Card | Shows |
 | --- | --- |
-| `ecowitt-weather-card` | Station overview: temperature, feels-like, dew point, an inline wind compass, and tiles for humidity, gust, rain, UV, solar, pressure, VPD and battery |
+| `ecowitt-weather-card` | Station overview: temperature, feels-like, dew point, an inline wind compass, and a row of metric tiles you choose and order yourself |
 | `ecowitt-wind-card` | Two columns: a compass with a dashed average-direction marker on the left, and on the right the speed, a Beaufort description, and rows for direction, gust, daily maximum and average direction. The rows flow into two columns on wider cards |
 | `ecowitt-rain-card` | Rain rate, a live wet/dry indicator from the piezo sensor, and accumulation bars for the hour, today, 24 hours, the week and the current event |
 | `ecowitt-solar-card` | UV index against a banded exposure scale, plus irradiance and illuminance |
@@ -54,6 +54,41 @@ Sub-cards title themselves by subject ("Wind", "Rain", "Solar & UV") so a
 dashboard full of them doesn't repeat the device name six times. The overview
 and soil cards use the device name, since there the device *is* the subject.
 Set `name` to override either.
+
+### Choosing the weather card's tiles
+
+The row of tiles under the temperature is configurable. The card editor lists
+the chosen tiles — drag them, or use the arrow buttons, to reorder; the ✕
+removes one; the chips underneath add what is left. It follows the same shape
+as the tile card's *features* editor.
+
+In YAML it is an ordered list of keys:
+
+```yaml
+type: custom:ecowitt-weather-card
+device: <your WS90 device>
+metrics:
+  - hum_out
+  - wind_gust
+  - rain_daily
+  - uv
+```
+
+Omit `metrics` entirely and you get the default set (humidity, gust, rain
+today, rain rate, UV, solar, pressure, VPD) — so existing cards are unchanged.
+An **empty** list is honoured and shows no tiles at all.
+
+Available keys: `temp_out`, `feels_like`, `dewpoint`, `hum_out`, `wind_speed`,
+`wind_gust`, `max_gust`, `wind_dir`, `wind_dir_avg`, `rain_rate`,
+`rain_hourly`, `rain_daily`, `rain_24h`, `rain_weekly`, `rain_monthly`,
+`rain_yearly`, `rain_event`, `uv`, `solar_rad`, `solar_lux`, `press_rel`,
+`press_abs`, `vpd`, `temp_in`, `hum_in`, `soil_moisture`, `battery`, `signal`,
+`voltage`, `cap_voltage`.
+
+A tile whose sensor the chosen device doesn't report is skipped when the card
+renders, and the editor marks it *(not on this device)* rather than leaving a
+silent gap. That is why a WS90 shows no pressure tile by default — on a
+GW2000 the pressure sensors belong to the gateway, not the station.
 
 ### Which device goes with which card
 
