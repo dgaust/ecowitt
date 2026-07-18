@@ -14,7 +14,7 @@
  * hard-codes an entity id and extra probes work without a code change.
  */
 
-const CARD_VERSION = "1.9.1";
+const CARD_VERSION = "1.10.0";
 
 /* Plain text rather than a %c-styled banner: console styling can only take
  * literal colours, and nothing in this file should hardcode one. */
@@ -272,13 +272,44 @@ function withHubMetrics(hass, deviceId, ids) {
   return merged;
 }
 
-/* Resolve a config to its ordered metric keys, dropping anything that is
- * not a known tile. An empty list is honoured — that means "no tiles", and
- * must not silently fall back to the defaults. */
-function metricKeys(config) {
+/*
+ * Resolve a config to its ordered tiles, dropping anything that is not a
+ * known metric. An empty list is honoured — that means "no tiles", and must
+ * not silently fall back to the defaults.
+ *
+ * An entry is either a bare key or `{ metric, name }`, so a tile can carry
+ * a shorter label than the catalogue's. Tile labels are a single line with
+ * an ellipsis, and something like "Capacitor voltage" does not fit.
+ */
+function metricEntries(config) {
   const chosen = config && config.metrics;
   const list = Array.isArray(chosen) ? chosen : DEFAULT_METRICS;
-  return list.filter((k) => METRIC_CATALOGUE[k]);
+
+  return list
+    .map((item) => {
+      const key = typeof item === "string" ? item : item && item.metric;
+      const meta = METRIC_CATALOGUE[key];
+      if (!meta) return null;
+      const name = item && typeof item === "object" ? item.name : null;
+      return {
+        key,
+        label: (typeof name === "string" && name.trim()) || meta.label,
+        icon: meta.icon,
+        digits: meta.digits,
+        suffixUnit: !meta.noUnit,
+      };
+    })
+    .filter(Boolean);
+}
+
+/* Store a bare key unless the name actually differs from the default, so
+ * YAML stays terse and a renamed default doesn't get pinned by accident. */
+function metricEntryFor(key, name) {
+  const meta = METRIC_CATALOGUE[key];
+  const trimmed = typeof name === "string" ? name.trim() : "";
+  return trimmed && meta && trimmed !== meta.label
+    ? { metric: key, name: trimmed }
+    : key;
 }
 
 /* ------------------------------------------------------------------ *
@@ -498,7 +529,8 @@ class EcowittBase extends HTMLElement {
    */
   _syncGrid(container, specs) {
     const live = specs.filter((s) => this._ids[s.key]);
-    const sig = live.map((s) => `${s.key}:${this._ids[s.key]}`).join("|");
+    /* The label is part of the structure: renaming a tile has to repaint it. */
+    const sig = live.map((s) => `${s.key}:${this._ids[s.key]}:${s.label}`).join("|");
 
     if (container.dataset.sig !== sig) {
       container.dataset.sig = sig;
@@ -742,16 +774,7 @@ class EcowittWeatherCard extends EcowittBase {
         spd ? ` · ${fmt(h, spd, 1)} ${unit(h, spd)}` : ""
       }</div>`;
 
-    this._syncGrid(
-      s.getElementById("grid"),
-      metricKeys(this._config).map((key) => {
-        const m = METRIC_CATALOGUE[key];
-        return {
-          key, label: m.label, icon: m.icon,
-          digits: m.digits, suffixUnit: !m.noUnit,
-        };
-      })
-    );
+    this._syncGrid(s.getElementById("grid"), metricEntries(this._config));
   }
 
   static getStubConfig(hass) {
@@ -1354,7 +1377,24 @@ const EDITOR_CSS = `
   .ecw-row.dragging { opacity: 0.4; }
   .ecw-row.over { outline: 2px solid var(--primary-color); }
   .ecw-row .ecw-grip { cursor: grab; color: var(--secondary-text-color); }
-  .ecw-row .ecw-label { flex: 1; min-width: 0; }
+  /* The label is editable in place: tile labels are one ellipsised line, so
+   * a long catalogue name like "Capacitor voltage" needs shortening. */
+  .ecw-row .ecw-label {
+    flex: 1; min-width: 0;
+    background: none; border: none; padding: var(--ha-space-1, 4px) 0;
+    color: inherit; font: inherit;
+    border-bottom: 1px solid transparent;
+  }
+  .ecw-row .ecw-label:hover { border-bottom-color: var(--divider-color); }
+  .ecw-row .ecw-label:focus {
+    outline: none; border-bottom-color: var(--primary-color);
+  }
+  .ecw-row .ecw-label.missing { color: var(--secondary-text-color); }
+  .ecw-row .ecw-note {
+    font-size: var(--ha-font-size-s, 12px);
+    color: var(--secondary-text-color);
+    white-space: nowrap;
+  }
   .ecw-btn {
     background: none; border: none; padding: var(--ha-space-1, 4px);
     cursor: pointer; color: var(--secondary-text-color);
@@ -1421,65 +1461,95 @@ class EcowittWeatherCardEditor extends EcowittCardEditor {
   }
 
   _metricsSignature() {
+    /* Labels included: a rename must repaint the row's placeholder state. */
     return JSON.stringify([
-      this._keys(),
+      this._entries().map((e) => [e.key, e.label]),
       Object.keys(this._ids || {}).sort(),
     ]);
   }
 
-  _keys() {
-    return metricKeys(this._config);
+  _entries() {
+    return metricEntries(this._config);
   }
 
-  _setKeys(keys) {
-    this._emit({ ...this._config, metrics: keys });
-    this._renderMetrics();
+  /* The stored form: bare keys, or {metric,name} where a name was set. */
+  _stored() {
+    return this._entries().map((e) => metricEntryFor(e.key, e.label));
+  }
+
+  /* `rerender` is false while typing a name: rebuilding the list would
+   * destroy the input mid-keystroke and drop focus. Advancing the
+   * signature keeps the echoed setConfig from rebuilding it either. */
+  _setEntries(entries, rerender = true) {
+    this._emit({ ...this._config, metrics: entries });
+    if (rerender) this._renderMetrics();
+    else this._signature = this._metricsSignature();
   }
 
   _move(from, to) {
-    const keys = this._keys();
-    if (to < 0 || to >= keys.length) return;
-    const [item] = keys.splice(from, 1);
-    keys.splice(to, 0, item);
-    this._setKeys(keys);
+    const entries = this._stored();
+    if (to < 0 || to >= entries.length) return;
+    const [item] = entries.splice(from, 1);
+    entries.splice(to, 0, item);
+    this._setEntries(entries);
+  }
+
+  _rename(index, name) {
+    const entries = this._stored();
+    const key = this._entries()[index].key;
+    entries[index] = metricEntryFor(key, name);
+    this._setEntries(entries, false);
   }
 
   _renderMetrics() {
     this._signature = this._metricsSignature();
-    const keys = this._keys();
+    const entries = this._entries();
     const list = this._section.querySelector(".ecw-list");
     const add = this._section.querySelector(".ecw-add");
     list.textContent = "";
     add.textContent = "";
 
-    if (!keys.length) {
+    if (!entries.length) {
       const empty = document.createElement("div");
       empty.className = "ecw-empty";
       empty.textContent = "No metrics. Add one below.";
       list.appendChild(empty);
     }
 
-    keys.forEach((key, i) => {
+    entries.forEach((entry, i) => {
+      const key = entry.key;
       const m = METRIC_CATALOGUE[key];
+      const missing = this._ids && !this._ids[key];
       const row = document.createElement("div");
       row.className = "ecw-row";
-      row.draggable = true;
 
+      /* Drag from the grip only. A draggable row hijacks text selection in
+       * the name field, so the row opts in on grip mousedown and out again
+       * when the drag ends. */
       const grip = document.createElement("ha-icon");
       grip.className = "ecw-grip";
       grip.setAttribute("icon", "mdi:drag");
+      grip.addEventListener("mousedown", () => { row.draggable = true; });
 
       const icon = document.createElement("ha-icon");
       icon.setAttribute("icon", m.icon);
 
-      const label = document.createElement("span");
+      const label = document.createElement("input");
       label.className = "ecw-label";
-      /* Flag entries the chosen device doesn't report: the tile is kept in
-       * the config but will not render, and saying so beats a silent gap. */
-      label.textContent = this._ids && !this._ids[key]
-        ? `${m.label} (not on this device)`
-        : m.label;
-      if (this._ids && !this._ids[key]) label.style.color = "var(--secondary-text-color)";
+      label.type = "text";
+      label.value = entry.label;
+      label.placeholder = m.label;
+      label.title = missing
+        ? `${m.label} — not reported by this device`
+        : `Shown as "${entry.label}" on the card`;
+      if (missing) label.classList.add("missing");
+      label.addEventListener("input", () => this._rename(i, label.value));
+      /* Blur repaints, collapsing an emptied field back to the default. */
+      label.addEventListener("blur", () => this._renderMetrics());
+
+      const note = document.createElement("span");
+      note.className = "ecw-note";
+      note.textContent = missing ? "not on this device" : "";
 
       const mk = (iconName, title, disabled, fn) => {
         const b = document.createElement("button");
@@ -1492,11 +1562,11 @@ class EcowittWeatherCardEditor extends EcowittCardEditor {
       };
 
       row.append(
-        grip, icon, label,
+        grip, icon, label, note,
         mk("mdi:arrow-up", "Move up", i === 0, () => this._move(i, i - 1)),
-        mk("mdi:arrow-down", "Move down", i === keys.length - 1, () => this._move(i, i + 1)),
+        mk("mdi:arrow-down", "Move down", i === entries.length - 1, () => this._move(i, i + 1)),
         mk("mdi:close", "Remove", false, () =>
-          this._setKeys(this._keys().filter((_, j) => j !== i)))
+          this._setEntries(this._stored().filter((_, j) => j !== i)))
       );
 
       row.addEventListener("dragstart", (ev) => {
@@ -1506,7 +1576,10 @@ class EcowittWeatherCardEditor extends EcowittCardEditor {
         /* Firefox ignores drags without payload. */
         ev.dataTransfer.setData("text/plain", key);
       });
-      row.addEventListener("dragend", () => row.classList.remove("dragging"));
+      row.addEventListener("dragend", () => {
+        row.classList.remove("dragging");
+        row.draggable = false;
+      });
       row.addEventListener("dragover", (ev) => {
         ev.preventDefault();
         row.classList.add("over");
@@ -1526,7 +1599,8 @@ class EcowittWeatherCardEditor extends EcowittCardEditor {
 
     /* Offer what the device actually reports first; the rest stay available
      * so a dashboard can be configured before hardware is paired. */
-    const available = Object.keys(METRIC_CATALOGUE).filter((k) => !keys.includes(k));
+    const chosen = new Set(entries.map((e) => e.key));
+    const available = Object.keys(METRIC_CATALOGUE).filter((k) => !chosen.has(k));
     const present = available.filter((k) => this._ids && this._ids[k]);
     const absent = available.filter((k) => !this._ids || !this._ids[k]);
 
@@ -1536,7 +1610,7 @@ class EcowittWeatherCardEditor extends EcowittCardEditor {
       chip.className = "ecw-chip" + (present.includes(key) ? "" : " absent");
       chip.innerHTML = `<ha-icon icon="${m.icon}"></ha-icon>`;
       chip.appendChild(document.createTextNode(m.label));
-      chip.addEventListener("click", () => this._setKeys([...this._keys(), key]));
+      chip.addEventListener("click", () => this._setEntries([...this._stored(), key]));
       add.appendChild(chip);
     });
   }

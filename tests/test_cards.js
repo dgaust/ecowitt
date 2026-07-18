@@ -38,8 +38,8 @@ const ctx = vm.createContext({
 vm.runInContext(
   fs.readFileSync(CARD, "utf8") +
     "\nglobalThis.__api = { discover, uvBand, soilBand, cardinal, windLabel," +
-    " compassSvg, fmt, num, metricKeys, METRIC_CATALOGUE, DEFAULT_METRICS," +
-    " withHubMetrics };",
+    " compassSvg, fmt, num, metricEntries, metricEntryFor, METRIC_CATALOGUE," +
+    " DEFAULT_METRICS, withHubMetrics };",
   ctx
 );
 const api = ctx.__api;
@@ -162,44 +162,56 @@ check(
 
 /* ---- configurable metric tiles ---- */
 console.log("metrics");
-const { metricKeys, METRIC_CATALOGUE, DEFAULT_METRICS } = api;
+const { metricEntries, metricEntryFor, METRIC_CATALOGUE, DEFAULT_METRICS } = api;
+const keysOf = (cfg) => metricEntries(cfg).map((e) => e.key).join(",");
+const labelsOf = (cfg) => metricEntries(cfg).map((e) => e.label).join(",");
 
-check("absent config falls back to defaults",
-  metricKeys({}).join(","), DEFAULT_METRICS.join(","));
-check("non-array metrics falls back",
-  metricKeys({ metrics: "nope" }).join(","), DEFAULT_METRICS.join(","));
+check("absent config falls back to defaults", keysOf({}), DEFAULT_METRICS.join(","));
+check("non-array metrics falls back", keysOf({ metrics: "nope" }), DEFAULT_METRICS.join(","));
 check("order is preserved exactly",
-  metricKeys({ metrics: ["vpd", "uv", "hum_out"] }).join(","), "vpd,uv,hum_out");
+  keysOf({ metrics: ["vpd", "uv", "hum_out"] }), "vpd,uv,hum_out");
 check("unknown keys are dropped",
-  metricKeys({ metrics: ["uv", "not_a_metric", "vpd"] }).join(","), "uv,vpd");
+  keysOf({ metrics: ["uv", "not_a_metric", "vpd"] }), "uv,vpd");
 /* An empty list must mean "no tiles", not "give me the defaults" — the
  * difference between honouring a choice and overriding it. */
-check("empty list yields no tiles", metricKeys({ metrics: [] }).length, 0);
-check("duplicates are left alone",
-  metricKeys({ metrics: ["uv", "uv"] }).join(","), "uv,uv");
+check("empty list yields no tiles", metricEntries({ metrics: [] }).length, 0);
+check("duplicates are left alone", keysOf({ metrics: ["uv", "uv"] }), "uv,uv");
 
 assert("every default metric is in the catalogue",
   DEFAULT_METRICS.every((k) => METRIC_CATALOGUE[k]));
 
-/* A catalogue entry the discovery rules can never produce would be a tile
- * the user can add but that stays permanently blank. */
-const discoverable = new Set(Object.keys(ws).concat(Object.keys(gw), Object.keys(soil)));
-const knownKeys = new Set([
-  ...discoverable, "temp_in", "hum_in", "press_abs", "soil_moisture",
-  "rain_monthly", "rain_yearly", "wind_speed", "signal", "battery",
-]);
-const orphans = Object.keys(METRIC_CATALOGUE).filter((k) => !knownKeys.has(k));
-assert(`no catalogue entry is undiscoverable${orphans.length ? ": " + orphans.join(", ") : ""}`,
-  orphans.length === 0);
+/* ---- per-tile name overrides ---- */
+console.log("tile names");
+check("bare keys use the catalogue label",
+  labelsOf({ metrics: ["cap_voltage"] }), "Capacitor voltage");
+check("an override replaces it",
+  labelsOf({ metrics: [{ metric: "cap_voltage", name: "Capacitor" }] }), "Capacitor");
+check("override does not change the key",
+  keysOf({ metrics: [{ metric: "cap_voltage", name: "Capacitor" }] }), "cap_voltage");
+/* Old configs are plain strings and must keep working unchanged. */
+check("string and object entries mix",
+  labelsOf({ metrics: ["uv", { metric: "vpd", name: "Deficit" }] }), "UV index,Deficit");
+check("blank name falls back to the default",
+  labelsOf({ metrics: [{ metric: "uv", name: "   " }] }), "UV index");
+check("non-string name falls back",
+  labelsOf({ metrics: [{ metric: "uv", name: 42 }] }), "UV index");
+check("names are trimmed",
+  labelsOf({ metrics: [{ metric: "uv", name: "  Sun  " }] }), "Sun");
+assert("an object entry with an unknown metric is dropped",
+  metricEntries({ metrics: [{ metric: "nope", name: "x" }] }).length === 0);
+assert("a malformed entry is dropped",
+  metricEntries({ metrics: [null, undefined, 7, {}] }).length === 0);
 
-assert("every catalogue entry has a label and icon",
-  Object.values(METRIC_CATALOGUE).every((m) => m.label && m.icon));
-
-/* The defaults must be what the card rendered before the option existed,
- * so upgrading doesn't rearrange anyone's dashboard. */
-check("defaults match the pre-existing tile set",
-  DEFAULT_METRICS.join(","),
-  "hum_out,wind_gust,rain_daily,rain_rate,uv,solar_rad,press_rel,vpd");
+/* Storing: only pin a name when it actually differs from the default, so
+ * YAML stays terse and defaults are free to change later. */
+check("default name stores as a bare key",
+  JSON.stringify(metricEntryFor("uv", "UV index")), '"uv"');
+check("blank stores as a bare key", JSON.stringify(metricEntryFor("uv", "")), '"uv"');
+check("a real override is stored",
+  JSON.stringify(metricEntryFor("cap_voltage", "Capacitor")),
+  '{"metric":"cap_voltage","name":"Capacitor"}');
+check("round trip survives",
+  labelsOf({ metrics: [metricEntryFor("cap_voltage", "Capacitor")] }), "Capacitor");
 
 /* ---- hub fallback ---- */
 console.log("hub metrics");

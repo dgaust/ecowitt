@@ -74,6 +74,24 @@ metrics:
   - uv
 ```
 
+### Renaming a tile
+
+A tile label is a single line and truncates with an ellipsis, so a long
+catalogue name such as "Capacitor voltage" gets cut off. Type over the name in
+the editor's list to shorten it, or write the entry as an object:
+
+```yaml
+metrics:
+  - hum_out
+  - metric: cap_voltage
+    name: Capacitor
+```
+
+Bare keys and named entries mix freely, so existing configs keep working. A
+name is only stored when it differs from the catalogue default — clear the
+field and the entry collapses back to a bare key and picks the default up
+again, including any later change to it.
+
 Omit `metrics` entirely and you get the default set (humidity, gust, rain
 today, rain rate, UV, solar, pressure, VPD) — so existing cards are unchanged.
 An **empty** list is honoured and shows no tiles at all.
