@@ -14,7 +14,7 @@
  * hard-codes an entity id and extra probes work without a code change.
  */
 
-const CARD_VERSION = "1.1.0";
+const CARD_VERSION = "1.2.0";
 
 console.info(
   `%c ECOWITT-CARDS %c ${CARD_VERSION} `,
@@ -732,18 +732,16 @@ class EcowittRainCard extends EcowittBase {
       s.getElementById("wet").textContent = "";
     }
 
-    /* Bars are scaled against the largest period present. The scale is
-     * square-root rather than linear: a yearly total dwarfs an hourly one
-     * by two or three orders of magnitude, and on a linear scale every
-     * short period collapses into an invisible sliver. Square root keeps
-     * the ordering intact while leaving small values readable. */
+    /* Bars are scaled against the largest period present, on a square-root
+     * rather than linear scale: the longest period still outweighs the
+     * shortest by an order of magnitude or more, and linearly that leaves
+     * the short ones as invisible slivers. Square root keeps the ordering
+     * intact while staying readable at the bottom of the range. */
     const periods = [
       ["rain_hourly", "Hour"],
       ["rain_daily", "Today"],
       ["rain_24h", "24 hours"],
       ["rain_weekly", "Week"],
-      ["rain_monthly", "Month"],
-      ["rain_yearly", "Year"],
       ["rain_event", "Event"],
     ].filter(([k]) => this._ids[k]);
 
