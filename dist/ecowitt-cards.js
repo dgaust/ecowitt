@@ -14,7 +14,7 @@
  * hard-codes an entity id and extra probes work without a code change.
  */
 
-const CARD_VERSION = "1.4.0";
+const CARD_VERSION = "1.5.0";
 
 console.info(
   `%c ECOWITT-CARDS %c ${CARD_VERSION} `,
@@ -641,27 +641,37 @@ class EcowittWindCard extends EcowittBase {
         .big small { font-size: var(--ha-font-size-m, 14px); color: var(--secondary-text-color); }
         /* One grid for all rows, so labels and values line up as columns.
          * Both cells carry the entity so either half opens more-info. */
+        /* Rows flow into as many columns as fit. Stretching four rows across
+         * a wide card leaves a chasm between label and value; wrapping them
+         * into two columns fills the width with content instead, and halves
+         * the height. Narrow cards fall back to a single column. */
         .stats {
           display: grid;
-          grid-template-columns: max-content minmax(0, 1fr);
-          column-gap: 12px;
-          row-gap: 2px;
-          margin-top: 5px;
+          grid-template-columns: repeat(auto-fit, minmax(132px, 1fr));
+          column-gap: 20px;
+          row-gap: 3px;
+          margin-top: 6px;
         }
-        .stats .sk {
+        .srow {
+          display: flex;
+          align-items: baseline;
+          justify-content: space-between;
+          gap: 10px;
+          min-width: 0;
+          cursor: pointer;
+        }
+        .srow .sk {
           font-size: var(--ha-font-size-s, 12px);
           color: var(--secondary-text-color);
           white-space: nowrap;
-          cursor: pointer;
         }
-        .stats .sv {
+        .srow .sv {
           font-size: var(--ha-font-size-s, 12px);
           color: var(--primary-text-color);
           font-variant-numeric: tabular-nums;
           white-space: nowrap;
           overflow: hidden;
           text-overflow: ellipsis;
-          cursor: pointer;
         }
       </style>
       <ha-card>
@@ -685,7 +695,7 @@ class EcowittWindCard extends EcowittBase {
 
     const dir = num(h, this._ids.wind_dir);
     const avg = num(h, this._ids.wind_dir_avg);
-    s.getElementById("compass").innerHTML = compassSvg(104, dir, avg);
+    s.getElementById("compass").innerHTML = compassSvg(132, dir, avg);
 
     const spd = this._ids.wind_speed;
     s.getElementById("speed").innerHTML = spd
@@ -713,8 +723,9 @@ class EcowittWindCard extends EcowittBase {
   }
 
   _stat(id, label, value) {
-    return `<div class="sk" data-entity="${id}">${label}</div>
-            <div class="sv" data-entity="${id}">${value}</div>`;
+    return `<div class="srow" data-entity="${id}">
+        <span class="sk">${label}</span><span class="sv">${value}</span>
+      </div>`;
   }
 
   static getStubConfig() {

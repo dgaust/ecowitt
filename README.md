@@ -12,7 +12,7 @@ card.
 | Card | Shows |
 | --- | --- |
 | `ecowitt-weather-card` | Station overview: temperature, feels-like, dew point, an inline wind compass, and tiles for humidity, gust, rain, UV, solar, pressure, VPD and battery |
-| `ecowitt-wind-card` | Two columns: a compass with a dashed average-direction marker on the left, and on the right the speed, a Beaufort description, and rows for direction, gust, daily maximum and average direction |
+| `ecowitt-wind-card` | Two columns: a compass with a dashed average-direction marker on the left, and on the right the speed, a Beaufort description, and rows for direction, gust, daily maximum and average direction. The rows flow into two columns on wider cards |
 | `ecowitt-rain-card` | Rain rate, a live wet/dry indicator from the piezo sensor, and accumulation bars for the hour, today, 24 hours, the week and the current event |
 | `ecowitt-solar-card` | UV index against a banded exposure scale, plus irradiance and illuminance |
 | `ecowitt-soil-card` | One soil probe: moisture with a dry/ideal/saturated band, battery, signal and channel |
