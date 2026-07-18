@@ -14,7 +14,7 @@
  * hard-codes an entity id and extra probes work without a code change.
  */
 
-const CARD_VERSION = "1.8.0";
+const CARD_VERSION = "1.9.0";
 
 /* Plain text rather than a %c-styled banner: console styling can only take
  * literal colours, and nothing in this file should hardcode one. */
@@ -229,11 +229,11 @@ const METRIC_CATALOGUE = {
   uv: { label: "UV index", icon: "mdi:weather-sunny-alert", digits: 0, noUnit: true },
   solar_rad: { label: "Solar", icon: "mdi:solar-power-variant", digits: 0 },
   solar_lux: { label: "Illuminance", icon: "mdi:white-balance-sunny", digits: 0 },
-  press_rel: { label: "Pressure", icon: "mdi:gauge", digits: 0 },
-  press_abs: { label: "Absolute pressure", icon: "mdi:gauge-low", digits: 0 },
+  press_rel: { label: "Pressure", icon: "mdi:gauge", digits: 0, hub: true },
+  press_abs: { label: "Absolute pressure", icon: "mdi:gauge-low", digits: 0, hub: true },
   vpd: { label: "VPD", icon: "mdi:leaf", digits: 2 },
-  temp_in: { label: "Indoor temperature", icon: "mdi:home-thermometer", digits: 1 },
-  hum_in: { label: "Indoor humidity", icon: "mdi:water-percent", digits: 0 },
+  temp_in: { label: "Indoor temperature", icon: "mdi:home-thermometer", digits: 1, hub: true },
+  hum_in: { label: "Indoor humidity", icon: "mdi:water-percent", digits: 0, hub: true },
   soil_moisture: { label: "Soil moisture", icon: "mdi:watering-can", digits: 0 },
   battery: { label: "Battery", icon: "mdi:battery", digits: 0 },
   signal: { label: "Signal", icon: "mdi:signal", digits: 0 },
@@ -247,6 +247,30 @@ const DEFAULT_METRICS = [
   "hum_out", "wind_gust", "rain_daily", "rain_rate",
   "uv", "solar_rad", "press_rel", "vpd",
 ];
+
+/*
+ * Some readings only exist on the gateway: a WS90 has no barometer, so
+ * pressure and the indoor climate belong to the GW2000 that receives it.
+ * The device registry links each sensor to its gateway through
+ * `via_device_id`, so metrics flagged `hub` fall back to that parent when
+ * the selected device doesn't report them.
+ *
+ * Only flagged keys do this. A blanket fallback would let a card borrow a
+ * sibling's battery or a soil probe's moisture, which would be wrong and
+ * confusing.
+ */
+function withHubMetrics(hass, deviceId, ids) {
+  const dev = hass && hass.devices ? hass.devices[deviceId] : null;
+  const parentId = dev && dev.via_device_id;
+  if (!parentId || parentId === deviceId) return ids;
+
+  const parent = discover(hass, parentId);
+  const merged = { ...ids };
+  for (const [key, meta] of Object.entries(METRIC_CATALOGUE)) {
+    if (meta.hub && !merged[key] && parent[key]) merged[key] = parent[key];
+  }
+  return merged;
+}
 
 /* Resolve a config to its ordered metric keys, dropping anything that is
  * not a known tile. An empty list is honoured — that means "no tiles", and
@@ -402,7 +426,9 @@ class EcowittBase extends HTMLElement {
 
   set hass(hass) {
     this._hass = hass;
-    this._ids = discover(hass, this._config.device);
+    this._ids = withHubMetrics(
+      hass, this._config.device, discover(hass, this._config.device)
+    );
 
     /* A device with nothing recognisable behind it is almost always the
      * wrong device rather than a broken sensor, and a card full of dashes
@@ -1402,14 +1428,20 @@ class EcowittWeatherCardEditor extends EcowittCardEditor {
     });
   }
 
+  /* Resolve exactly as the card does, hub fallback included, so the editor
+   * never marks a metric unavailable that the card would happily show. */
+  _resolve(hass, deviceId) {
+    return withHubMetrics(hass, deviceId, discover(hass, deviceId));
+  }
+
   set hass(hass) {
     this._hass = hass;
-    this._ids = discover(hass, this._config && this._config.device);
+    this._ids = this._resolve(hass, this._config && this._config.device);
     super.hass = hass;
   }
 
   setConfig(config) {
-    this._ids = discover(this._hass, config && config.device);
+    this._ids = this._resolve(this._hass, config && config.device);
     super.setConfig(config);
   }
 }

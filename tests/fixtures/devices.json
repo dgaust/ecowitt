@@ -13,7 +13,7 @@
         "device_class": "humidity",
         "entity_id": "sensor.ecowitt_humidity_humidityin",
         "name": "Ecowitt Gateway Indoor Humidity",
-        "state": "40",
+        "state": "39",
         "state_class": "measurement",
         "unit": "%"
       },
@@ -21,7 +21,7 @@
         "device_class": "atmospheric_pressure",
         "entity_id": "sensor.ecowitt_pressure_absolute",
         "name": "Ecowitt Gateway Absolute Pressure",
-        "state": "1029.8",
+        "state": "1031.2",
         "state_class": null,
         "unit": "hPa"
       },
@@ -29,7 +29,7 @@
         "device_class": "atmospheric_pressure",
         "entity_id": "sensor.ecowitt_pressure_relative",
         "name": "Ecowitt Gateway Relative Pressure",
-        "state": "1029.8",
+        "state": "1031.2",
         "state_class": null,
         "unit": "hPa"
       },
@@ -37,12 +37,13 @@
         "device_class": "temperature",
         "entity_id": "sensor.ecowitt_temperature_indoor",
         "name": "Ecowitt Gateway Indoor Temperature",
-        "state": "27.9",
+        "state": "26.0",
         "state_class": "measurement",
         "unit": "\u00b0C"
       }
     ],
-    "model": "GW2000C"
+    "model": "GW2000C",
+    "via_device": null
   },
   "Ecowitt Rain Sensor": {
     "entities": [
@@ -143,7 +144,8 @@
         "unit": "mm"
       }
     ],
-    "model": "wh40"
+    "model": "wh40",
+    "via_device": "Ecowitt Gateway"
   },
   "Ecowitt Soil Moisture Sensor D42E2": {
     "entities": [
@@ -191,12 +193,13 @@
         "device_class": "moisture",
         "entity_id": "sensor.ecowitt_soil_moisture_d42e2",
         "name": "Ecowitt Soil Moisture Sensor D42E2 Soil Moisture CH1",
-        "state": "20",
+        "state": "19",
         "state_class": "measurement",
         "unit": "%"
       }
     ],
-    "model": "wh51"
+    "model": "wh51",
+    "via_device": "Ecowitt Gateway"
   },
   "Ecowitt Soil Moisture Sensor D431A": {
     "entities": [
@@ -244,12 +247,13 @@
         "device_class": "moisture",
         "entity_id": "sensor.ecowitt_soil_moisture_d431a",
         "name": "Ecowitt Soil Moisture Sensor D431A Soil Moisture CH2",
-        "state": "51",
+        "state": "50",
         "state_class": "measurement",
         "unit": "%"
       }
     ],
-    "model": "wh51"
+    "model": "wh51",
+    "via_device": "Ecowitt Gateway"
   },
   "Ecowitt Weather Station": {
     "entities": [
@@ -289,7 +293,7 @@
         "device_class": "voltage",
         "entity_id": "sensor.ecowitt_capacitor_voltage_13360",
         "name": "Ecowitt Weather Station WH90 Capacitor Voltage",
-        "state": "0.1",
+        "state": "0.3",
         "state_class": "measurement",
         "unit": "V"
       },
@@ -305,7 +309,7 @@
         "device_class": "temperature",
         "entity_id": "sensor.ecowitt_dewpoint_13360",
         "name": "Ecowitt Weather Station Dewpoint Temperature",
-        "state": "11.0",
+        "state": "9.7",
         "state_class": "measurement",
         "unit": "\u00b0C"
       },
@@ -313,7 +317,7 @@
         "device_class": "temperature",
         "entity_id": "sensor.ecowitt_feels_like_temp_13360",
         "name": "Ecowitt Weather Station Feels Like Temperature",
-        "state": "15.2",
+        "state": "13.4",
         "state_class": "measurement",
         "unit": "\u00b0C"
       },
@@ -337,7 +341,7 @@
         "device_class": "wind_speed",
         "entity_id": "sensor.ecowitt_max_daily_gust_13360",
         "name": "Ecowitt Weather Station Max Daily Gust",
-        "state": "3.96",
+        "state": "6.84",
         "state_class": "measurement",
         "unit": "km/h"
       },
@@ -353,7 +357,7 @@
         "device_class": "humidity",
         "entity_id": "sensor.ecowitt_outdoor_humidity_13360",
         "name": "Ecowitt Weather Station Outdoor Humidity",
-        "state": "76",
+        "state": "78",
         "state_class": "measurement",
         "unit": "%"
       },
@@ -361,7 +365,7 @@
         "device_class": "temperature",
         "entity_id": "sensor.ecowitt_outdoor_temp_13360",
         "name": "Ecowitt Weather Station Outdoor Temperature",
-        "state": "15.2",
+        "state": "13.4",
         "state_class": "measurement",
         "unit": "\u00b0C"
       },
@@ -393,7 +397,7 @@
         "device_class": "illuminance",
         "entity_id": "sensor.ecowitt_solar_lux_13360",
         "name": "Ecowitt Weather Station Solar Illuminance",
-        "state": "0.0",
+        "state": "5199.8",
         "state_class": "measurement",
         "unit": "lx"
       },
@@ -401,7 +405,7 @@
         "device_class": "irradiance",
         "entity_id": "sensor.ecowitt_solar_radiation_13360",
         "name": "Ecowitt Weather Station Solar Radiation",
-        "state": "0.0",
+        "state": "41.04",
         "state_class": "measurement",
         "unit": "W/m\u00b2"
       },
@@ -417,7 +421,7 @@
         "device_class": "voltage",
         "entity_id": "sensor.ecowitt_voltage_13360",
         "name": "Ecowitt Weather Station WH90 Battery Voltage",
-        "state": "3.18",
+        "state": "3.14",
         "state_class": "measurement",
         "unit": "V"
       },
@@ -425,7 +429,7 @@
         "device_class": "pressure",
         "entity_id": "sensor.ecowitt_vpd_13360",
         "name": "Ecowitt Weather Station Vapor Pressure Deficit",
-        "state": "0.415",
+        "state": "0.338",
         "state_class": "measurement",
         "unit": "kPa"
       },
@@ -441,7 +445,7 @@
         "device_class": null,
         "entity_id": "sensor.ecowitt_wind_direction_13360",
         "name": "Ecowitt Weather Station Wind Direction",
-        "state": "32",
+        "state": "53",
         "state_class": "measurement_angle",
         "unit": "\u00b0"
       },
@@ -449,7 +453,7 @@
         "device_class": null,
         "entity_id": "sensor.ecowitt_wind_direction_avg_13360",
         "name": "Ecowitt Weather Station Wind Direction Avg",
-        "state": "242",
+        "state": "53",
         "state_class": "measurement_angle",
         "unit": "\u00b0"
       },
@@ -457,7 +461,7 @@
         "device_class": "wind_speed",
         "entity_id": "sensor.ecowitt_wind_gust_13360",
         "name": "Ecowitt Weather Station Wind Gust",
-        "state": "1.8",
+        "state": "0.0",
         "state_class": "measurement",
         "unit": "km/h"
       },
@@ -478,6 +482,7 @@
         "unit": "mm"
       }
     ],
-    "model": "wh90"
+    "model": "wh90",
+    "via_device": "Ecowitt Gateway"
   }
 }

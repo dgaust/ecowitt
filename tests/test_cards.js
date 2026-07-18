@@ -38,7 +38,8 @@ const ctx = vm.createContext({
 vm.runInContext(
   fs.readFileSync(CARD, "utf8") +
     "\nglobalThis.__api = { discover, uvBand, soilBand, cardinal, windLabel," +
-    " compassSvg, fmt, num, metricKeys, METRIC_CATALOGUE, DEFAULT_METRICS };",
+    " compassSvg, fmt, num, metricKeys, METRIC_CATALOGUE, DEFAULT_METRICS," +
+    " withHubMetrics };",
   ctx
 );
 const api = ctx.__api;
@@ -51,7 +52,7 @@ let n = 0;
 for (const [devName, info] of Object.entries(dump)) {
   const devId = "dev" + ++n;
   deviceIds[devName] = devId;
-  hass.devices[devId] = { id: devId, name: devName };
+  hass.devices[devId] = { id: devId, name: devName, _via: info.via_device };
   for (const e of info.entities) {
     hass.entities[e.entity_id] = { device_id: devId };
     hass.states[e.entity_id] = {
@@ -63,6 +64,12 @@ for (const [devName, info] of Object.entries(dump)) {
       },
     };
   }
+}
+
+/* Resolve via_device names to ids, the shape hass.devices actually has. */
+for (const dev of Object.values(hass.devices)) {
+  dev.via_device_id = dev._via ? deviceIds[dev._via] : null;
+  delete dev._via;
 }
 
 let failures = 0;
@@ -193,6 +200,50 @@ assert("every catalogue entry has a label and icon",
 check("defaults match the pre-existing tile set",
   DEFAULT_METRICS.join(","),
   "hum_out,wind_gust,rain_daily,rain_rate,uv,solar_rad,press_rel,vpd");
+
+/* ---- hub fallback ---- */
+console.log("hub metrics");
+const { withHubMetrics } = api;
+const wsDev = deviceIds["Ecowitt Weather Station"];
+const gwDev = deviceIds["Ecowitt Gateway"];
+const wsHub = withHubMetrics(hass, wsDev, api.discover(hass, wsDev));
+
+/* A WS90 has no barometer; the pressure sensors live on the gateway it
+ * reports through. Following via_device_id is what makes the tile usable. */
+assert("WS90 has no pressure of its own", ws.press_rel === undefined);
+check("pressure borrowed from the gateway",
+  wsHub.press_rel, "sensor.ecowitt_pressure_relative");
+check("absolute pressure too",
+  wsHub.press_abs, "sensor.ecowitt_pressure_absolute");
+check("indoor climate too", wsHub.temp_in, "sensor.ecowitt_temperature_indoor");
+check("indoor humidity too", wsHub.hum_in, "sensor.ecowitt_humidity_humidityin");
+
+/* Only flagged keys travel. Borrowing anything else would attach another
+ * device's reading to this card — a sibling's battery, say. */
+check("own outdoor temperature is untouched",
+  wsHub.temp_out, "sensor.ecowitt_outdoor_temp_13360");
+check("own battery is not replaced",
+  wsHub.battery, "sensor.ecowitt_battery_13360");
+assert("no soil moisture leaks in from a sibling",
+  wsHub.soil_moisture === undefined);
+assert("no rain sensor battery leaks in",
+  wsHub.battery !== "sensor.ecowitt_rain_battery_11c87");
+
+/* The soil probes share the same gateway, so they inherit the same hub
+ * metrics without ever picking up each other's readings. */
+const soilHub = withHubMetrics(hass, deviceIds["Ecowitt Soil Moisture Sensor D431A"], soil);
+check("a soil probe sees gateway pressure",
+  soilHub.press_rel, "sensor.ecowitt_pressure_relative");
+check("its own moisture is unchanged",
+  soilHub.soil_moisture, "sensor.ecowitt_soil_moisture_d431a");
+
+/* The gateway is the root: no parent, nothing to borrow, no crash. */
+const gwHub = withHubMetrics(hass, gwDev, gw);
+check("gateway keeps its own pressure",
+  gwHub.press_rel, "sensor.ecowitt_pressure_relative");
+check("gateway gains nothing", Object.keys(gwHub).length, Object.keys(gw).length);
+assert("unknown device is handled",
+  Object.keys(withHubMetrics(hass, "nope", {})).length === 0);
 
 /* ---- helpers ---- */
 console.log("helpers");

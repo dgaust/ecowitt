@@ -6,17 +6,26 @@ so the test suite exercises discovery against what you actually own:
     cp .env.example .env      # fill in HA_URL and HA_TOKEN
     python tests/capture_fixture.py
 
-The token is read from .env, which is gitignored, and is never printed.
-
-The fixture stores device and entity names exactly as Home Assistant reports
-them. If you name a device after its IP or anything else you would rather not
-publish, check the diff before committing — this repository is public.
+The token is read from .env, which is gitignored, and is never printed. IP
+addresses are stripped from device and entity names, since the fixture is
+committed to a public repository. Still worth skimming the diff for anything
+else you would rather not publish.
 """
 import json
 import os
+import re
 import sys
 import urllib.error
 import urllib.request
+
+# Device names often embed the gateway's IP ("Ecowitt Gateway 192.0.2.10").
+# The fixture is committed to a public repository, so strip them rather than
+# relying on remembering to do it by hand after every capture.
+IPV4 = re.compile(r"\s*\b\d{1,3}(?:\.\d{1,3}){3}\b")
+
+
+def scrub(value):
+    return IPV4.sub("", value).strip() if isinstance(value, str) else value
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)
@@ -27,14 +36,20 @@ DOMAIN = sys.argv[1] if len(sys.argv) > 1 else "ecowitt_local"
 # Ask HA to resolve each of the integration's entities to its device, which
 # is the only reliable way to group them — entity ids alone don't say which
 # physical sensor they came from.
+# via_device_id matters: hub-level readings (pressure, indoor climate) live
+# on the gateway, and the cards follow that link to offer them on a sensor
+# device's card. The fixture has to carry it or the tests can't see it.
 TEMPLATE = """
 {%%- set ns = namespace(rows=[]) -%%}
 {%%- for e in integration_entities('%s') -%%}
   {%%- set d = device_id(e) -%%}
+  {%%- set v = device_attr(d, 'via_device_id') -%%}
   {%%- set ns.rows = ns.rows + [{
       'entity_id': e,
       'device': device_attr(d, 'name_by_user') or device_attr(d, 'name'),
-      'model': device_attr(d, 'model')
+      'model': device_attr(d, 'model'),
+      'via_device': (device_attr(v, 'name_by_user') or device_attr(v, 'name'))
+                    if v else None
   }] -%%}
 {%%- endfor -%%}
 {{ ns.rows | tojson }}
@@ -89,11 +104,16 @@ def main():
         st = states.get(r["entity_id"], {})
         attrs = st.get("attributes", {}) or {}
         dev = devices.setdefault(
-            r["device"] or "(no device)", {"model": r.get("model"), "entities": []}
+            scrub(r["device"]) or "(no device)",
+            {
+                "model": r.get("model"),
+                "via_device": scrub(r.get("via_device")),
+                "entities": [],
+            },
         )
         dev["entities"].append({
             "entity_id": r["entity_id"],
-            "name": attrs.get("friendly_name"),
+            "name": scrub(attrs.get("friendly_name")),
             "state": st.get("state"),
             "unit": attrs.get("unit_of_measurement"),
             "device_class": attrs.get("device_class"),

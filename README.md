@@ -85,10 +85,20 @@ Available keys: `temp_out`, `feels_like`, `dewpoint`, `hum_out`, `wind_speed`,
 `press_abs`, `vpd`, `temp_in`, `hum_in`, `soil_moisture`, `battery`, `signal`,
 `voltage`, `cap_voltage`.
 
-A tile whose sensor the chosen device doesn't report is skipped when the card
-renders, and the editor marks it *(not on this device)* rather than leaving a
-silent gap. That is why a WS90 shows no pressure tile by default — on a
-GW2000 the pressure sensors belong to the gateway, not the station.
+A tile whose sensor is nowhere to be found is skipped when the card renders,
+and the editor marks it *(not on this device)* rather than leaving a silent
+gap.
+
+**Hub metrics.** Some readings only exist on the gateway — a WS90 has no
+barometer, so pressure and the indoor climate belong to the GW2000 that
+receives it. The device registry links each sensor to its gateway through
+`via_device_id`, and `press_rel`, `press_abs`, `temp_in` and `hum_in` follow
+that link when the selected device doesn't report them. So a weather card
+pointed at the WS90 still shows pressure.
+
+Only those four keys travel. A blanket fallback would let a card pick up a
+sibling's battery or another probe's moisture, so everything else resolves on
+the selected device alone.
 
 ### Which device goes with which card
 

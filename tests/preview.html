@@ -133,7 +133,7 @@
       for (const [devName, info] of Object.entries(dump)) {
         const id = "dev" + ++n;
         byName[devName] = id;
-        hass.devices[id] = { id, name: devName };
+        hass.devices[id] = { id, name: devName, _via: info.via_device };
         for (const e of info.entities) {
           hass.entities[e.entity_id] = { device_id: id };
           hass.states[e.entity_id] = {
@@ -145,6 +145,13 @@
             },
           };
         }
+      }
+
+      /* Resolve via_device names to ids, matching hass.devices' real shape.
+       * Hub metrics like pressure depend on this link. */
+      for (const dev of Object.values(hass.devices)) {
+        dev.via_device_id = dev._via ? byName[dev._via] : null;
+        delete dev._via;
       }
 
       /* Nudge a few values off their calm real-world readings so the
