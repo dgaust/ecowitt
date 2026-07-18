@@ -14,13 +14,11 @@
  * hard-codes an entity id and extra probes work without a code change.
  */
 
-const CARD_VERSION = "1.5.0";
+const CARD_VERSION = "1.6.0";
 
-console.info(
-  `%c ECOWITT-CARDS %c ${CARD_VERSION} `,
-  "color:#fff;background:#3f7cac;font-weight:700;border-radius:3px 0 0 3px",
-  "color:#3f7cac;background:#eaf1f6;font-weight:700;border-radius:0 3px 3px 0"
-);
+/* Plain text rather than a %c-styled banner: console styling can only take
+ * literal colours, and nothing in this file should hardcode one. */
+console.info(`ECOWITT-CARDS ${CARD_VERSION}`);
 
 /* ------------------------------------------------------------------ *
  * Discovery
@@ -256,7 +254,7 @@ const BASE_CSS = `
   .batt.low { color: var(--warning-color); }
   .batt.critical { color: var(--error-color); }
   .dot {
-    width: 8px; height: 8px; border-radius: 50%;
+    width: 8px; height: 8px; border-radius: var(--ha-border-radius-circle, 50%);
     background: var(--success-color);
     flex: 0 0 auto;
   }
@@ -273,7 +271,7 @@ const BASE_CSS = `
   }
   .cell {
     background: var(--secondary-background-color);
-    border-radius: 10px;
+    border-radius: var(--ha-border-radius-md, 8px);
     padding: 10px;
     display: flex;
     flex-direction: column;
@@ -309,14 +307,14 @@ const BASE_CSS = `
   .clickable:hover { background: var(--divider-color); }
   .bar {
     height: 6px;
-    border-radius: 3px;
+    border-radius: var(--ha-border-radius-pill, 9999px);
     background: var(--divider-color);
     overflow: hidden;
   }
   .bar > i {
     display: block;
     height: 100%;
-    border-radius: 3px;
+    border-radius: var(--ha-border-radius-pill, 9999px);
     transition: width 240ms ease-in-out;
   }
   .warn {
@@ -867,7 +865,8 @@ class EcowittSolarCard extends EcowittBase {
         /* Band boundaries sit at the WHO thresholds (3/6/8/11) mapped onto
          * the same 0–12 linear range the marker uses. */
         .scale {
-          position: relative; height: 6px; border-radius: 3px;
+          position: relative; height: 6px;
+          border-radius: var(--ha-border-radius-pill, 9999px);
           background: linear-gradient(to right,
             var(--success-color) 0%, var(--success-color) 25%,
             var(--warning-color) 25%, var(--warning-color) 50%,
@@ -876,7 +875,8 @@ class EcowittSolarCard extends EcowittBase {
           opacity: 0.85;
         }
         .scale > i {
-          position: absolute; top: -4px; width: 4px; height: 14px; border-radius: 2px;
+          position: absolute; top: -4px; width: 4px; height: 14px;
+          border-radius: var(--ha-border-radius-sm, 4px);
           background: var(--primary-text-color);
           box-shadow: 0 0 0 2px var(--card-background-color);
           transform: translateX(-2px);

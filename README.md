@@ -168,4 +168,19 @@ Assistant.
 - Because type scales, avoid fixed-width columns around text. Prefer
   `max-content` so a row grows with the font instead of clipping. The preview
   harness has a font-scale button for checking this.
+- Use `--ha-border-radius-*` for corners (`sm` 4px, `md` 8px, `lg` 12px, `pill`,
+  `circle`) rather than literal values.
+- Nothing in the file should contain a literal colour, font family, font size,
+  font weight or corner radius. To check:
+
+  ```bash
+  grep -nE "#[0-9a-fA-F]{3,8}\b|rgba?\(|font-family|font-(size|weight): [0-9]|border-radius: [0-9]" dist/ecowitt-cards.js
+  ```
+
+  That includes the startup `console.info`, which is plain text precisely
+  because console styling can only take literal colours.
+- Spacing is **not** tokenised. HA's `--ha-space-*` scale is 4px steps, and most
+  of the gaps here (10px, 14px, 7px, 5px, 3px, 2px) sit between steps, so moving
+  to it would change the layouts rather than merely rename their values. Left
+  deliberately as literals.
 - Bump `CARD_VERSION` on every change so a hard-refresh is verifiable.
