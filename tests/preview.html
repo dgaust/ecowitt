@@ -122,10 +122,20 @@
       }
     });
   </script>
-  <script src="../dist/ecowitt-cards.js"></script>
   <script>
     (async () => {
-      const dump = await (await fetch("./fixtures/devices.json")).json();
+      /* Load the card file with a cache-buster. A plain <script src> gets
+       * served from cache after an edit, which silently tests the previous
+       * build — - and looks exactly like a fix that did not work. */
+      await new Promise((resolve, reject) => {
+        const s = document.createElement("script");
+        s.src = "../dist/ecowitt-cards.js?t=" + Date.now();
+        s.onload = resolve;
+        s.onerror = reject;
+        document.head.appendChild(s);
+      });
+
+      const dump = await (await fetch("./fixtures/devices.json?t=" + Date.now())).json();
 
       const hass = { states: {}, entities: {}, devices: {} };
       const byName = {};

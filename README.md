@@ -227,6 +227,15 @@ Assistant.
 - Use `--ha-space-*` for gaps, padding and margins. It is a 4px scale
   (`--ha-space-1` = 4px, `-2` = 8px, and so on); snap to the nearest step rather
   than reintroducing an off-grid literal.
+- **Never rewrite a container's `innerHTML` on every state update.** Home
+  Assistant assigns `hass` on every state change, and a weather station emits
+  those constantly. Replacing the DOM destroys the node under the user's
+  finger, and a click only fires when press and release land on the same
+  element — so taps get silently swallowed and the control feels dead. Rebuild
+  only when the *structure* changes (tracked with a `data-sig` attribute) and
+  patch values in place otherwise. `_syncGrid`, `_syncHead` and the equivalents
+  in the wind and rain cards do this; the editor guards `_renderMetrics` the
+  same way.
 - When rows carry a bar or any aligned column, put the grid tracks on the
   **container** and give each row `grid-template-columns: subgrid`. A grid per
   row sizes `max-content` independently, which staggers the bars by label

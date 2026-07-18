@@ -14,7 +14,7 @@
  * hard-codes an entity id and extra probes work without a code change.
  */
 
-const CARD_VERSION = "1.9.0";
+const CARD_VERSION = "1.9.1";
 
 /* Plain text rather than a %c-styled banner: console styling can only take
  * literal colours, and nothing in this file should hardcode one. */
@@ -480,10 +480,45 @@ class EcowittBase extends HTMLElement {
     if (!id) return "";
     const u = suffixUnit ? unit(this._hass, id) : "";
     return `
-      <div class="cell clickable" data-entity="${id}">
+      <div class="cell clickable" data-entity="${id}"
+           data-digits="${digits}" data-unit="${suffixUnit ? 1 : 0}">
         <div class="k">${icon ? `<ha-icon icon="${icon}"></ha-icon>` : ""}${label}</div>
         <div class="v">${fmt(this._hass, id, digits)}${u ? `<small>${u}</small>` : ""}</div>
       </div>`;
+  }
+
+  /*
+   * Replacing a container's innerHTML on every state update destroys the
+   * node under the user's finger. A tap only counts when press and release
+   * land on the same element, so an update arriving mid-tap silently
+   * swallows it — the tile looks unresponsive until you jab at it.
+   *
+   * So: rebuild only when the *structure* changes (which tiles, in what
+   * order), and otherwise patch the values of the existing nodes.
+   */
+  _syncGrid(container, specs) {
+    const live = specs.filter((s) => this._ids[s.key]);
+    const sig = live.map((s) => `${s.key}:${this._ids[s.key]}`).join("|");
+
+    if (container.dataset.sig !== sig) {
+      container.dataset.sig = sig;
+      container.innerHTML = live
+        .map((s) => this._cell(s.key, s.label, s.icon, s.digits, s.suffixUnit !== false))
+        .join("");
+      this._bindCells();
+      return;
+    }
+    this._patchCells(container);
+  }
+
+  _patchCells(root) {
+    root.querySelectorAll(".cell[data-entity]").forEach((el) => {
+      const id = el.getAttribute("data-entity");
+      const digits = Number(el.dataset.digits);
+      const u = el.dataset.unit === "1" ? unit(this._hass, id) : "";
+      el.querySelector(".v").innerHTML =
+        `${fmt(this._hass, id, digits)}${u ? `<small>${u}</small>` : ""}`;
+    });
   }
 
   _bindCells() {
@@ -496,6 +531,43 @@ class EcowittBase extends HTMLElement {
    * the device is already obvious from context, and repeating its name on
    * every card just makes six identical headings. Cards that represent a
    * whole device pass preferDevice. An explicit `name` always wins. */
+  /* Same reasoning as _syncGrid: the battery chip is a tap target, so the
+   * header is only rebuilt when its structure changes, not on every tick. */
+  _syncHead(container, subject, preferDevice = false) {
+    const battId = this._ids.battery || this._ids.soil_battery;
+    const sig = [
+      this._config.name || "",
+      preferDevice ? deviceName(this._hass, this._config.device) : subject,
+      this._ids.online || "",
+      battId || "",
+    ].join("|");
+
+    if (container.dataset.sig !== sig) {
+      container.dataset.sig = sig;
+      container.innerHTML = this._headHtml(subject, preferDevice);
+      this._bindCells();
+      return;
+    }
+
+    const dot = container.querySelector(".dot");
+    if (dot && this._ids.online) {
+      const st = this._hass.states[this._ids.online];
+      const s = st ? st.state : null;
+      dot.className = "dot" + (s === "on" ? "" : s === "off" ? " off" : " unknown");
+    }
+    const chip = container.querySelector(".batt");
+    if (chip) {
+      const fresh = this._batteryChip();
+      /* An empty chip means the reading went unavailable; leave the node in
+       * place so the tap target survives, and blank its text. */
+      const tmp = document.createElement("div");
+      tmp.innerHTML = fresh || "";
+      const next = tmp.firstElementChild;
+      chip.className = next ? next.className : "batt";
+      chip.innerHTML = next ? next.innerHTML : "";
+    }
+  }
+
   _headHtml(subject, preferDevice = false) {
     const title =
       this._config.name ||
@@ -648,7 +720,7 @@ class EcowittWeatherCard extends EcowittBase {
   _update() {
     const h = this._hass;
     const s = this._shadow();
-    s.getElementById("head").innerHTML = this._headHtml("Weather Station", true);
+    this._syncHead(s.getElementById("head"), "Weather Station", true);
 
     const tId = this._ids.temp_out;
     s.getElementById("temp").innerHTML = tId
@@ -670,14 +742,16 @@ class EcowittWeatherCard extends EcowittBase {
         spd ? ` · ${fmt(h, spd, 1)} ${unit(h, spd)}` : ""
       }</div>`;
 
-    s.getElementById("grid").innerHTML = metricKeys(this._config)
-      .map((key) => {
+    this._syncGrid(
+      s.getElementById("grid"),
+      metricKeys(this._config).map((key) => {
         const m = METRIC_CATALOGUE[key];
-        return m ? this._cell(key, m.label, m.icon, m.digits, !m.noUnit) : "";
+        return {
+          key, label: m.label, icon: m.icon,
+          digits: m.digits, suffixUnit: !m.noUnit,
+        };
       })
-      .join("");
-
-    this._bindCells();
+    );
   }
 
   static getStubConfig(hass) {
@@ -772,7 +846,7 @@ class EcowittWindCard extends EcowittBase {
   _update() {
     const h = this._hass;
     const s = this._shadow();
-    s.getElementById("head").innerHTML = this._headHtml("Wind");
+    this._syncHead(s.getElementById("head"), "Wind");
 
     const dir = num(h, this._ids.wind_dir);
     const avg = num(h, this._ids.wind_dir_avg);
@@ -790,17 +864,29 @@ class EcowittWindCard extends EcowittBase {
     const bearing = (deg) => `${cardinal(deg)} ${Math.round(deg)}°`;
     const rows = [];
     if (this._ids.wind_dir && dir !== null) {
-      rows.push(this._stat(this._ids.wind_dir, "Direction", bearing(dir)));
+      rows.push({ id: this._ids.wind_dir, label: "Direction", value: bearing(dir) });
     }
     for (const [key, label] of [["wind_gust", "Gust"], ["max_gust", "Max today"]]) {
       const id = this._ids[key];
-      if (id) rows.push(this._stat(id, label, `${fmt(h, id, 1)} ${unit(h, id)}`));
+      if (id) rows.push({ id, label, value: `${fmt(h, id, 1)} ${unit(h, id)}` });
     }
     if (this._ids.wind_dir_avg && avg !== null) {
-      rows.push(this._stat(this._ids.wind_dir_avg, "Avg dir", bearing(avg)));
+      rows.push({ id: this._ids.wind_dir_avg, label: "Avg dir", value: bearing(avg) });
     }
-    s.getElementById("stats").innerHTML = rows.join("");
-    this._bindCells();
+
+    /* Rebuild only when the set of rows changes; otherwise patch the
+     * values, so a row stays the same node between taps. */
+    const stats = s.getElementById("stats");
+    const sig = rows.map((r) => r.id).join("|");
+    if (stats.dataset.sig !== sig) {
+      stats.dataset.sig = sig;
+      stats.innerHTML = rows.map((r) => this._stat(r.id, r.label, r.value)).join("");
+      this._bindCells();
+    } else {
+      stats.querySelectorAll(".srow").forEach((el, i) => {
+        el.querySelector(".sv").textContent = rows[i].value;
+      });
+    }
   }
 
   _stat(id, label, value) {
@@ -880,7 +966,7 @@ class EcowittRainCard extends EcowittBase {
   _update() {
     const h = this._hass;
     const s = this._shadow();
-    s.getElementById("head").innerHTML = this._headHtml("Rain");
+    this._syncHead(s.getElementById("head"), "Rain");
 
     const rate = this._ids.rain_rate;
     s.getElementById("rate").innerHTML = rate
@@ -913,20 +999,34 @@ class EcowittRainCard extends EcowittBase {
     const vals = periods.map(([k]) => num(h, this._ids[k]) || 0);
     const max = Math.max(...vals, 0.1);
 
-    s.getElementById("periods").innerHTML = periods
-      .map(([k, label], i) => {
-        const id = this._ids[k];
-        const pct = Math.max(0, Math.min(100, Math.sqrt(vals[i] / max) * 100));
-        return `
+    const width = (i) =>
+      Math.max(0, Math.min(100, Math.sqrt(vals[i] / max) * 100));
+
+    /* Rebuild only when the set of periods changes; otherwise patch the
+     * bars and readings, so each row stays the same tap target. */
+    const el = s.getElementById("periods");
+    const sig = periods.map(([k]) => this._ids[k]).join("|");
+    if (el.dataset.sig !== sig) {
+      el.dataset.sig = sig;
+      el.innerHTML = periods
+        .map(([k, label], i) => {
+          const id = this._ids[k];
+          return `
           <div class="prow clickable" data-entity="${id}">
             <div class="pk">${label}</div>
-            <div class="bar"><i style="width:${pct}%;background:var(--info-color)"></i></div>
+            <div class="bar"><i style="width:${width(i)}%;background:var(--info-color)"></i></div>
             <div class="pv">${fmt(h, id, 1)} ${unit(h, id)}</div>
           </div>`;
-      })
-      .join("");
-
-    this._bindCells();
+        })
+        .join("");
+      this._bindCells();
+    } else {
+      el.querySelectorAll(".prow").forEach((row, i) => {
+        const id = this._ids[periods[i][0]];
+        row.querySelector(".bar > i").style.width = `${width(i)}%`;
+        row.querySelector(".pv").textContent = `${fmt(h, id, 1)} ${unit(h, id)}`;
+      });
+    }
   }
 
   static getStubConfig() {
@@ -998,7 +1098,7 @@ class EcowittSolarCard extends EcowittBase {
   _update() {
     const h = this._hass;
     const s = this._shadow();
-    s.getElementById("head").innerHTML = this._headHtml("Solar & UV");
+    this._syncHead(s.getElementById("head"), "Solar & UV");
 
     const uv = num(h, this._ids.uv);
     const band = uvBand(uv);
@@ -1009,11 +1109,10 @@ class EcowittSolarCard extends EcowittBase {
     s.getElementById("marker").style.left =
       `${Math.max(0, Math.min(100, ((uv === null ? 0 : uv) / 12) * 100))}%`;
 
-    s.getElementById("grid").innerHTML = [
-      this._cell("solar_rad", "Irradiance", "mdi:solar-power-variant", 0),
-      this._cell("solar_lux", "Illuminance", "mdi:white-balance-sunny", 0),
-    ].join("");
-    this._bindCells();
+    this._syncGrid(s.getElementById("grid"), [
+      { key: "solar_rad", label: "Irradiance", icon: "mdi:solar-power-variant", digits: 0 },
+      { key: "solar_lux", label: "Illuminance", icon: "mdi:white-balance-sunny", digits: 0 },
+    ]);
   }
 
   static getStubConfig() {
@@ -1068,7 +1167,7 @@ class EcowittSoilCard extends EcowittBase {
   _update() {
     const h = this._hass;
     const s = this._shadow();
-    s.getElementById("head").innerHTML = this._headHtml("Soil", true);
+    this._syncHead(s.getElementById("head"), "Soil", true);
 
     const id = this._ids.soil_moisture;
     const pct = num(h, id);
@@ -1129,7 +1228,7 @@ class EcowittIndoorCard extends EcowittBase {
   _update() {
     const h = this._hass;
     const s = this._shadow();
-    s.getElementById("head").innerHTML = this._headHtml("Indoor");
+    this._syncHead(s.getElementById("head"), "Indoor");
 
     const t = this._ids.temp_in || this._ids.temp_out;
     s.getElementById("temp").innerHTML = t
@@ -1141,11 +1240,10 @@ class EcowittIndoorCard extends EcowittBase {
       ? `Humidity ${fmt(h, hu, 0)}${unit(h, hu)}`
       : "";
 
-    s.getElementById("grid").innerHTML = [
-      this._cell("press_rel", "Relative", "mdi:gauge", 0),
-      this._cell("press_abs", "Absolute", "mdi:gauge-low", 0),
-    ].join("");
-    this._bindCells();
+    this._syncGrid(s.getElementById("grid"), [
+      { key: "press_rel", label: "Relative", icon: "mdi:gauge", digits: 0 },
+      { key: "press_abs", label: "Absolute", icon: "mdi:gauge-low", digits: 0 },
+    ]);
   }
 
   static getStubConfig() {
@@ -1312,7 +1410,21 @@ class EcowittWeatherCardEditor extends EcowittCardEditor {
         <div class="ecw-add"></div>`;
       this.appendChild(this._section);
     }
-    this._renderMetrics();
+
+    /* Home Assistant assigns `hass` on every state change, and a weather
+     * station emits those constantly. Rebuilding the list each time
+     * replaced the buttons under the cursor: a click only fires when
+     * mousedown and mouseup land on the same element, so an update
+     * arriving mid-click swallowed it and the button appeared dead.
+     * Rebuild only when the list itself actually changed. */
+    if (this._metricsSignature() !== this._signature) this._renderMetrics();
+  }
+
+  _metricsSignature() {
+    return JSON.stringify([
+      this._keys(),
+      Object.keys(this._ids || {}).sort(),
+    ]);
   }
 
   _keys() {
@@ -1333,6 +1445,7 @@ class EcowittWeatherCardEditor extends EcowittCardEditor {
   }
 
   _renderMetrics() {
+    this._signature = this._metricsSignature();
     const keys = this._keys();
     const list = this._section.querySelector(".ecw-list");
     const add = this._section.querySelector(".ecw-add");
