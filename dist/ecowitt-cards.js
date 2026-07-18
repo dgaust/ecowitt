@@ -14,7 +14,7 @@
  * hard-codes an entity id and extra probes work without a code change.
  */
 
-const CARD_VERSION = "1.3.0";
+const CARD_VERSION = "1.4.0";
 
 console.info(
   `%c ECOWITT-CARDS %c ${CARD_VERSION} `,
@@ -624,25 +624,56 @@ class EcowittWindCard extends EcowittBase {
     s.innerHTML = `
       <style>
         ${BASE_CSS}
-        .row { display: flex; align-items: center; gap: 18px; }
-        .row .readout { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+        /* Compass left, everything else stacked right. The compass is sized
+         * to the text column beside it rather than the other way round. */
+        .cols {
+          display: grid;
+          grid-template-columns: auto minmax(0, 1fr);
+          gap: 16px;
+          align-items: center;
+        }
+        .info { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
         .big {
           font-size: var(--ha-font-size-4xl, 32px);
           font-weight: var(--ha-font-weight-light, 300); line-height: 1;
           color: var(--primary-text-color); font-variant-numeric: tabular-nums;
         }
         .big small { font-size: var(--ha-font-size-m, 14px); color: var(--secondary-text-color); }
+        /* One grid for all rows, so labels and values line up as columns.
+         * Both cells carry the entity so either half opens more-info. */
+        .stats {
+          display: grid;
+          grid-template-columns: max-content minmax(0, 1fr);
+          column-gap: 12px;
+          row-gap: 2px;
+          margin-top: 5px;
+        }
+        .stats .sk {
+          font-size: var(--ha-font-size-s, 12px);
+          color: var(--secondary-text-color);
+          white-space: nowrap;
+          cursor: pointer;
+        }
+        .stats .sv {
+          font-size: var(--ha-font-size-s, 12px);
+          color: var(--primary-text-color);
+          font-variant-numeric: tabular-nums;
+          white-space: nowrap;
+          overflow: hidden;
+          text-overflow: ellipsis;
+          cursor: pointer;
+        }
       </style>
       <ha-card>
         <div id="head"></div>
-        <div class="row">
+        <div class="cols">
           <div id="compass"></div>
-          <div class="readout">
+          <div class="info">
             <div class="big" id="speed">—</div>
             <div class="sub" id="desc"></div>
+            <div class="stats" id="stats"></div>
           </div>
         </div>
-        <div class="grid" id="grid"></div>
       </ha-card>`;
     this._built = true;
   }
@@ -653,29 +684,37 @@ class EcowittWindCard extends EcowittBase {
     s.getElementById("head").innerHTML = this._headHtml("Wind");
 
     const dir = num(h, this._ids.wind_dir);
-    s.getElementById("compass").innerHTML = compassSvg(
-      120,
-      dir,
-      num(h, this._ids.wind_dir_avg)
-    );
+    const avg = num(h, this._ids.wind_dir_avg);
+    s.getElementById("compass").innerHTML = compassSvg(104, dir, avg);
 
     const spd = this._ids.wind_speed;
     s.getElementById("speed").innerHTML = spd
       ? `${fmt(h, spd, 1)}<small> ${unit(h, spd)}</small>`
       : "—";
 
-    const kmh = num(h, spd);
-    const desc = [windLabel(kmh), dir === null ? "" : `from ${cardinal(dir)} (${Math.round(dir)}°)`]
-      .filter(Boolean)
-      .join(" · ");
-    s.getElementById("desc").textContent = desc;
+    /* The compass already shows where the wind is coming from, so the line
+     * under the speed carries the description instead of repeating it. */
+    s.getElementById("desc").textContent = windLabel(num(h, spd));
 
-    s.getElementById("grid").innerHTML = [
-      this._cell("wind_gust", "Gust", "mdi:weather-windy", 1),
-      this._cell("max_gust", "Max today", "mdi:speedometer-medium", 1),
-      this._cell("wind_dir_avg", "Avg dir", "mdi:compass-outline", 0),
-    ].join("");
+    const bearing = (deg) => `${cardinal(deg)} ${Math.round(deg)}°`;
+    const rows = [];
+    if (this._ids.wind_dir && dir !== null) {
+      rows.push(this._stat(this._ids.wind_dir, "Direction", bearing(dir)));
+    }
+    for (const [key, label] of [["wind_gust", "Gust"], ["max_gust", "Max today"]]) {
+      const id = this._ids[key];
+      if (id) rows.push(this._stat(id, label, `${fmt(h, id, 1)} ${unit(h, id)}`));
+    }
+    if (this._ids.wind_dir_avg && avg !== null) {
+      rows.push(this._stat(this._ids.wind_dir_avg, "Avg dir", bearing(avg)));
+    }
+    s.getElementById("stats").innerHTML = rows.join("");
     this._bindCells();
+  }
+
+  _stat(id, label, value) {
+    return `<div class="sk" data-entity="${id}">${label}</div>
+            <div class="sv" data-entity="${id}">${value}</div>`;
   }
 
   static getStubConfig() {
