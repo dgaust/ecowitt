@@ -174,13 +174,17 @@ Assistant.
   font weight or corner radius. To check:
 
   ```bash
-  grep -nE "#[0-9a-fA-F]{3,8}\b|rgba?\(|font-family|font-(size|weight): [0-9]|border-radius: [0-9]" dist/ecowitt-cards.js
+  grep -nE "#[0-9a-fA-F]{3,8}\b|rgba?\(|font-family|font-(size|weight): [0-9]|border-radius: [0-9]|(gap|padding|margin-top): [0-9]+px" dist/ecowitt-cards.js
   ```
 
   That includes the startup `console.info`, which is plain text precisely
   because console styling can only take literal colours.
-- Spacing is **not** tokenised. HA's `--ha-space-*` scale is 4px steps, and most
-  of the gaps here (10px, 14px, 7px, 5px, 3px, 2px) sit between steps, so moving
-  to it would change the layouts rather than merely rename their values. Left
-  deliberately as literals.
+- Use `--ha-space-*` for gaps, padding and margins. It is a 4px scale
+  (`--ha-space-1` = 4px, `-2` = 8px, and so on); snap to the nearest step rather
+  than reintroducing an off-grid literal.
+- When rows carry a bar or any aligned column, put the grid tracks on the
+  **container** and give each row `grid-template-columns: subgrid`. A grid per
+  row sizes `max-content` independently, which staggers the bars by label
+  length. Subgrid keeps the row a real element, so it stays a single hover and
+  click target — unlike `display: contents`.
 - Bump `CARD_VERSION` on every change so a hard-refresh is verifiable.
