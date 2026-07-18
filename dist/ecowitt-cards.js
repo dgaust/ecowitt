@@ -14,7 +14,7 @@
  * hard-codes an entity id and extra probes work without a code change.
  */
 
-const CARD_VERSION = "1.2.0";
+const CARD_VERSION = "1.3.0";
 
 console.info(
   `%c ECOWITT-CARDS %c ${CARD_VERSION} `,
@@ -205,6 +205,15 @@ function soilBand(pct) {
  * Shared styles
  * ------------------------------------------------------------------ */
 
+/*
+ * Type comes from Home Assistant's own typography tokens rather than fixed
+ * rem values, so the cards follow the user's theme — including
+ * --ha-font-size-scale, which scales every size at once for accessibility.
+ * Each token carries its HA default as a fallback for older cores.
+ *
+ *   xs 10px  s 12px  m 14px  l 16px  xl 20px  2xl 24px  3xl 28px
+ *   4xl 32px  5xl 40px      weights: light 300, medium 500
+ */
 const BASE_CSS = `
   :host { display: block; }
   ha-card {
@@ -220,8 +229,8 @@ const BASE_CSS = `
     gap: 8px;
   }
   .title {
-    font-size: 1.05rem;
-    font-weight: 500;
+    font-size: var(--ha-font-size-l, 16px);
+    font-weight: var(--ha-font-weight-medium, 500);
     color: var(--primary-text-color);
     overflow: hidden;
     text-overflow: ellipsis;
@@ -237,7 +246,7 @@ const BASE_CSS = `
     display: inline-flex;
     align-items: center;
     gap: 2px;
-    font-size: 0.72rem;
+    font-size: var(--ha-font-size-s, 12px);
     color: var(--secondary-text-color);
     font-variant-numeric: tabular-nums;
     white-space: nowrap;
@@ -254,7 +263,7 @@ const BASE_CSS = `
   .dot.off { background: var(--error-color); }
   .dot.unknown { background: var(--disabled-color); }
   .sub {
-    font-size: 0.8rem;
+    font-size: var(--ha-font-size-s, 12px);
     color: var(--secondary-text-color);
   }
   .grid {
@@ -272,7 +281,7 @@ const BASE_CSS = `
     min-width: 0;
   }
   .cell .k {
-    font-size: 0.72rem;
+    font-size: var(--ha-font-size-s, 12px);
     color: var(--secondary-text-color);
     display: flex;
     align-items: center;
@@ -282,13 +291,16 @@ const BASE_CSS = `
     text-overflow: ellipsis;
   }
   .cell .v {
-    font-size: 1.05rem;
+    font-size: var(--ha-font-size-l, 16px);
     color: var(--primary-text-color);
     font-variant-numeric: tabular-nums;
+    /* Values must not spill out of their tile when the user scales type up. */
     white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
   }
   .cell .v small {
-    font-size: 0.72rem;
+    font-size: var(--ha-font-size-s, 12px);
     color: var(--secondary-text-color);
     margin-left: 2px;
   }
@@ -308,7 +320,7 @@ const BASE_CSS = `
     transition: width 240ms ease-in-out;
   }
   .warn {
-    font-size: 0.78rem;
+    font-size: var(--ha-font-size-s, 12px);
     color: var(--secondary-text-color);
     padding: 4px 0;
   }
@@ -521,18 +533,18 @@ class EcowittWeatherCard extends EcowittBase {
         ${BASE_CSS}
         .hero { display: flex; align-items: center; gap: 16px; }
         .hero .temp {
-          font-size: 2.6rem;
-          font-weight: 300;
+          font-size: var(--ha-font-size-5xl, 40px);
+          font-weight: var(--ha-font-weight-light, 300);
           line-height: 1;
           color: var(--primary-text-color);
           font-variant-numeric: tabular-nums;
         }
-        .hero .temp small { font-size: 1.1rem; color: var(--secondary-text-color); }
+        .hero .temp small { font-size: var(--ha-font-size-l, 16px); color: var(--secondary-text-color); }
         .hero .meta { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
         .hero .spacer { flex: 1; }
         .wind-mini { display: flex; flex-direction: column; align-items: center; gap: 2px; }
         .wind-mini .lbl {
-          font-size: 0.72rem; color: var(--secondary-text-color);
+          font-size: var(--ha-font-size-s, 12px); color: var(--secondary-text-color);
           font-variant-numeric: tabular-nums; white-space: nowrap;
         }
       </style>
@@ -615,10 +627,11 @@ class EcowittWindCard extends EcowittBase {
         .row { display: flex; align-items: center; gap: 18px; }
         .row .readout { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
         .big {
-          font-size: 2.1rem; font-weight: 300; line-height: 1;
+          font-size: var(--ha-font-size-4xl, 32px);
+          font-weight: var(--ha-font-weight-light, 300); line-height: 1;
           color: var(--primary-text-color); font-variant-numeric: tabular-nums;
         }
-        .big small { font-size: 0.95rem; color: var(--secondary-text-color); }
+        .big small { font-size: var(--ha-font-size-m, 14px); color: var(--secondary-text-color); }
       </style>
       <ha-card>
         <div id="head"></div>
@@ -685,20 +698,32 @@ class EcowittRainCard extends EcowittBase {
         ${BASE_CSS}
         .top { display: flex; align-items: baseline; gap: 10px; }
         .big {
-          font-size: 2.1rem; font-weight: 300; line-height: 1;
+          font-size: var(--ha-font-size-4xl, 32px);
+          font-weight: var(--ha-font-weight-light, 300); line-height: 1;
           color: var(--primary-text-color); font-variant-numeric: tabular-nums;
         }
-        .big small { font-size: 0.95rem; color: var(--secondary-text-color); }
+        .big small { font-size: var(--ha-font-size-m, 14px); color: var(--secondary-text-color); }
         .wet {
           margin-left: auto; display: flex; align-items: center; gap: 5px;
-          font-size: 0.78rem; color: var(--secondary-text-color);
+          font-size: var(--ha-font-size-s, 12px); color: var(--secondary-text-color);
         }
         .periods { display: flex; flex-direction: column; gap: 8px; }
-        .prow { display: grid; grid-template-columns: 68px 1fr 74px; gap: 10px; align-items: center; }
-        .prow .pk { font-size: 0.78rem; color: var(--secondary-text-color); }
+        /* Content-sized outer columns rather than fixed px: grid keeps them
+         * aligned across rows, and they grow with the user's font scale
+         * instead of clipping. */
+        .prow {
+          display: grid;
+          grid-template-columns: max-content 1fr max-content;
+          gap: 10px; align-items: center;
+        }
+        .prow .pk {
+          font-size: var(--ha-font-size-s, 12px);
+          color: var(--secondary-text-color); white-space: nowrap;
+        }
         .prow .pv {
-          font-size: 0.82rem; text-align: right; color: var(--primary-text-color);
-          font-variant-numeric: tabular-nums;
+          font-size: var(--ha-font-size-m, 14px);
+          text-align: right; color: var(--primary-text-color);
+          font-variant-numeric: tabular-nums; white-space: nowrap;
         }
       </style>
       <ha-card>
@@ -784,10 +809,11 @@ class EcowittSolarCard extends EcowittBase {
         ${BASE_CSS}
         .uvhead { display: flex; align-items: baseline; gap: 10px; }
         .big {
-          font-size: 2.1rem; font-weight: 300; line-height: 1;
+          font-size: var(--ha-font-size-4xl, 32px);
+          font-weight: var(--ha-font-weight-light, 300); line-height: 1;
           color: var(--primary-text-color); font-variant-numeric: tabular-nums;
         }
-        .band { font-size: 0.85rem; font-weight: 500; }
+        .band { font-size: var(--ha-font-size-m, 14px); font-weight: var(--ha-font-weight-medium, 500); }
         /* Band boundaries sit at the WHO thresholds (3/6/8/11) mapped onto
          * the same 0–12 linear range the marker uses. */
         .scale {
@@ -808,7 +834,8 @@ class EcowittSolarCard extends EcowittBase {
         }
         .scaleticks {
           display: flex; justify-content: space-between;
-          font-size: 0.68rem; color: var(--secondary-text-color); margin-top: 2px;
+          font-size: var(--ha-font-size-xs, 10px);
+          color: var(--secondary-text-color); margin-top: 2px;
         }
       </style>
       <ha-card>
@@ -867,14 +894,19 @@ class EcowittSoilCard extends EcowittBase {
         ${BASE_CSS}
         .top { display: flex; align-items: baseline; gap: 10px; }
         .big {
-          font-size: 2.1rem; font-weight: 300; line-height: 1;
+          font-size: var(--ha-font-size-4xl, 32px);
+          font-weight: var(--ha-font-weight-light, 300); line-height: 1;
           color: var(--primary-text-color); font-variant-numeric: tabular-nums;
         }
-        .big small { font-size: 0.95rem; color: var(--secondary-text-color); }
-        .band { font-size: 0.85rem; font-weight: 500; margin-left: auto; }
+        .big small { font-size: var(--ha-font-size-m, 14px); color: var(--secondary-text-color); }
+        .band {
+          font-size: var(--ha-font-size-m, 14px);
+          font-weight: var(--ha-font-weight-medium, 500); margin-left: auto;
+        }
         .zones {
           display: flex; justify-content: space-between;
-          font-size: 0.68rem; color: var(--secondary-text-color); margin-top: 2px;
+          font-size: var(--ha-font-size-xs, 10px);
+          color: var(--secondary-text-color); margin-top: 2px;
         }
       </style>
       <ha-card>
@@ -933,10 +965,11 @@ class EcowittIndoorCard extends EcowittBase {
         ${BASE_CSS}
         .hero { display: flex; align-items: center; gap: 14px; }
         .big {
-          font-size: 2.3rem; font-weight: 300; line-height: 1;
+          font-size: var(--ha-font-size-4xl, 32px);
+          font-weight: var(--ha-font-weight-light, 300); line-height: 1;
           color: var(--primary-text-color); font-variant-numeric: tabular-nums;
         }
-        .big small { font-size: 1rem; color: var(--secondary-text-color); }
+        .big small { font-size: var(--ha-font-size-l, 16px); color: var(--secondary-text-color); }
       </style>
       <ha-card>
         <div id="head"></div>

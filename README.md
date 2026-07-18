@@ -159,4 +159,13 @@ Assistant.
 - Use Home Assistant theme variables for colour. The banded scales (UV, soil
   moisture) use `--success-color` / `--warning-color` / `--error-color` /
   `--info-color` rather than fixed hex values, so they follow the active theme.
+- Use Home Assistant's typography tokens for type — `--ha-font-size-*`,
+  `--ha-font-weight-*` — never fixed `rem` or `px`. HA multiplies every size by
+  `--ha-font-size-scale`, so hardcoded values silently opt out of the user's
+  text-size setting. Give each token its HA default as a fallback
+  (`var(--ha-font-size-m, 14px)`) so the cards still render on older cores and
+  in the preview harness.
+- Because type scales, avoid fixed-width columns around text. Prefer
+  `max-content` so a row grows with the font instead of clipping. The preview
+  harness has a font-scale button for checking this.
 - Bump `CARD_VERSION` on every change so a hard-refresh is verifiable.
