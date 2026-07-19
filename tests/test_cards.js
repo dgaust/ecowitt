@@ -398,6 +398,21 @@ assert("the current-direction title still appears without an average",
 assert("no titles at all when direction is unknown",
   !api.compassSvg(132, null, null, "arrow").includes("<title>"));
 
+/* The average marker is dropped on the weather card's inline compass: a few
+ * faint pixels with no row beside it to explain them. Same 90px threshold
+ * the cardinal letters use. */
+assert("132px draws the average marker",
+  api.compassSvg(132, 89, 44, "arrow").includes("stroke-dasharray"));
+assert("72px does not",
+  !api.compassSvg(72, 89, 44, "arrow").includes("stroke-dasharray"));
+assert("72px carries no orphaned average tooltip",
+  !api.compassSvg(72, 89, 44, "arrow").includes("Average wind direction"));
+assert("72px still draws the needle",
+  api.compassSvg(72, 89, 44, "arrow").includes("polygon"));
+assert("the threshold matches the cardinal letters",
+  api.compassSvg(90, 89, 44, "arrow").includes("stroke-dasharray") &&
+  api.compassSvg(89, 89, 44, "arrow").includes("stroke-dasharray") === false);
+
 /* ---- needle styles ---- */
 console.log("needle styles");
 const svgFor = (style, size) => api.compassSvg(size || 132, 89, null, style);

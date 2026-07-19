@@ -31,6 +31,11 @@ steady the two overlap; when it is shifting they splay apart, and the angle
 between them is a rough read on how variable it is. Both markers carry a
 tooltip saying which is which, and the wind card labels the row "10-min avg".
 
+It appears only on compasses of 90px or more — the same threshold that governs
+the cardinal letters. The weather card's inline compass is 72px, where the
+marker was a few faint pixels with no row beside it to explain them, so there
+the compass shows the current direction alone.
+
 Two needle shapes are available, on the wind card and on the weather card's
 inline compass:
 

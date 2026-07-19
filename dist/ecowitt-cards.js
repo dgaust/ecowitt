@@ -14,7 +14,7 @@
  * hard-codes an entity id and extra probes work without a code change.
  */
 
-const CARD_VERSION = "1.18.0";
+const CARD_VERSION = "1.18.1";
 
 /* Plain text rather than a %c-styled banner: console styling can only take
  * literal colours, and nothing in this file should hardcode one. */
@@ -887,8 +887,13 @@ function compassSvg(size, dir, avgDir, style) {
            ${needleShape(style, size, c, r)}
          </g>`;
 
+  /* Same threshold as the cardinal letters: at the weather card's inline
+   * size the dashed marker is a few faint pixels with no row beside it to
+   * say what it is, so the small compass shows the current direction only. */
+  const showAverage = size >= 90;
+
   const ghost =
-    avgDir === null || avgDir === undefined
+    avgDir === null || avgDir === undefined || !showAverage
       ? ""
       : `<g transform="rotate(${arrow(avgDir)} ${c} ${c})" opacity="0.35">
            <title>Average wind direction over the last 10 minutes</title>
