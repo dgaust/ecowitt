@@ -14,7 +14,7 @@
  * hard-codes an entity id and extra probes work without a code change.
  */
 
-const CARD_VERSION = "1.16.0";
+const CARD_VERSION = "1.17.0";
 
 /* Plain text rather than a %c-styled banner: console styling can only take
  * literal colours, and nothing in this file should hardcode one. */
@@ -553,6 +553,10 @@ const BASE_CSS = `
   ha-icon { --mdc-icon-size: 15px; color: var(--secondary-text-color); }
   .clickable { cursor: pointer; }
   .clickable:hover { background: var(--divider-color); }
+  /* Tappable text — the hero readings. A background wash suits a tile but
+   * not a 40px numeral, so these dim slightly instead. */
+  .tap { cursor: pointer; }
+  .tap:hover { opacity: 0.75; }
   .bar {
     height: 6px;
     border-radius: var(--ha-border-radius-pill, 9999px);
@@ -606,6 +610,10 @@ class EcowittBase extends HTMLElement {
     }
     if (!this._built) this._build();
     this._update();
+    /* Bind centrally: the hero readings set their data-entity on every
+     * pass, and a card whose grid didn't rebuild would otherwise never
+     * attach their handlers. Assigning onclick is idempotent. */
+    this._bindCells();
   }
 
   _renderEmpty() {
@@ -686,6 +694,20 @@ class EcowittBase extends HTMLElement {
       el.querySelector(".v").innerHTML =
         `${fmt(this._hass, id, digits)}${u ? `<small>${u}</small>` : ""}`;
     });
+  }
+
+  /* Mark a node as opening an entity's more-info. Hero readings live in
+   * fixed elements rather than being regenerated, so the attribute is set
+   * on each pass and _bindCells re-attaches the handler. */
+  _tap(el, entityId) {
+    if (!el) return;
+    if (entityId) {
+      el.setAttribute("data-entity", entityId);
+      el.classList.add("tap");
+    } else {
+      el.removeAttribute("data-entity");
+      el.classList.remove("tap");
+    }
   }
 
   _bindCells() {
@@ -934,23 +956,33 @@ class EcowittWeatherCard extends EcowittBase {
     this._syncHead(s.getElementById("head"), "Weather Station", true);
 
     const tId = this._ids.temp_out;
-    s.getElementById("temp").innerHTML = tId
+    const tempEl = s.getElementById("temp");
+    tempEl.innerHTML = tId
       ? `${fmt(h, tId, 1)}<small>${unit(h, tId)}</small>`
       : "—";
+    this._tap(tempEl, tId);
 
+    /* Feels-like and dew point are separate sensors on one line, so each
+     * gets its own target rather than the line opening an arbitrary one. */
     const feels = this._ids.feels_like;
     const dew = this._ids.dewpoint;
     const bits = [];
-    if (feels) bits.push(`Feels ${fmt(h, feels, 1)}${unit(h, feels)}`);
-    if (dew) bits.push(`Dew point ${fmt(h, dew, 1)}${unit(h, dew)}`);
-    s.getElementById("feels").textContent = bits.join(" · ");
+    if (feels) {
+      bits.push(`<span class="tap" data-entity="${feels}">Feels ${fmt(h, feels, 1)}${unit(h, feels)}</span>`);
+    }
+    if (dew) {
+      bits.push(`<span class="tap" data-entity="${dew}">Dew point ${fmt(h, dew, 1)}${unit(h, dew)}</span>`);
+    }
+    s.getElementById("feels").innerHTML = bits.join(" · ");
 
     const dir = num(h, this._ids.wind_dir);
     const spd = this._ids.wind_speed;
     s.getElementById("windmini").innerHTML = `
       ${compassSvg(72, dir, num(h, this._ids.wind_dir_avg), this._config.needle)}
-      <div class="lbl">${dir === null ? "—" : `from ${cardinal(dir)}`}${
-        spd ? ` · ${fmt(h, spd, 1)} ${unit(h, spd)}` : ""
+      <div class="lbl">${
+        dir === null ? "—" : `<span class="tap" data-entity="${this._ids.wind_dir}">from ${cardinal(dir)}</span>`
+      }${
+        spd ? ` · <span class="tap" data-entity="${spd}">${fmt(h, spd, 1)} ${unit(h, spd)}</span>` : ""
       }</div>`;
 
     this._syncGrid(s.getElementById("grid"), metricEntries(this._config));
@@ -1056,9 +1088,11 @@ class EcowittWindCard extends EcowittBase {
       compassSvg(132, dir, avg, this._config.needle);
 
     const spd = this._ids.wind_speed;
-    s.getElementById("speed").innerHTML = spd
+    const speedEl = s.getElementById("speed");
+    speedEl.innerHTML = spd
       ? `${fmt(h, spd, 1)}<small> ${unit(h, spd)}</small>`
       : "—";
+    this._tap(speedEl, spd);
 
     /* The compass already shows where the wind is coming from, so the line
      * under the speed carries the description instead of repeating it. */
@@ -1172,19 +1206,23 @@ class EcowittRainCard extends EcowittBase {
     this._syncHead(s.getElementById("head"), "Rain");
 
     const rate = this._ids.rain_rate;
-    s.getElementById("rate").innerHTML = rate
+    const rateEl = s.getElementById("rate");
+    rateEl.innerHTML = rate
       ? `${fmt(h, rate, 1)}<small> ${unit(h, rate)}</small>`
       : "—";
+    this._tap(rateEl, rate);
 
     const piezo = this._ids.rain_piezo;
+    const wetEl = s.getElementById("wet");
     if (piezo && h.states[piezo]) {
       const wet = h.states[piezo].state === "on";
-      s.getElementById("wet").innerHTML =
+      wetEl.innerHTML =
         `<ha-icon icon="${wet ? "mdi:weather-rainy" : "mdi:weather-partly-cloudy"}"></ha-icon>` +
         (wet ? "Raining now" : "Dry");
     } else {
-      s.getElementById("wet").textContent = "";
+      wetEl.textContent = "";
     }
+    this._tap(wetEl, piezo);
 
     /* Bars are scaled against the largest period present, on a square-root
      * rather than linear scale: the longest period still outweighs the
@@ -1335,10 +1373,13 @@ class EcowittSolarCard extends EcowittBase {
     const uv = num(h, this._ids.uv);
     const band = bandFor(uv, scale);
 
-    s.getElementById("uv").textContent = uv === null ? "—" : String(Math.round(uv));
+    const uvEl = s.getElementById("uv");
+    uvEl.textContent = uv === null ? "—" : String(Math.round(uv));
     const bandEl = s.getElementById("band");
     bandEl.textContent = band.label;
     bandEl.style.color = band.color;
+    this._tap(uvEl, this._ids.uv);
+    this._tap(bandEl, this._ids.uv);
 
     /* The advice line is the point of the band, not decoration: at UV 3 and
      * above the guidance is to cover up, and a colour alone doesn't say it. */
@@ -1440,11 +1481,14 @@ class EcowittSoilCard extends EcowittBase {
     const pct = num(h, id);
     const band = bandFor(pct, scale);
 
-    s.getElementById("moist").innerHTML =
+    const moistEl = s.getElementById("moist");
+    moistEl.innerHTML =
       id ? `${fmt(h, id, 0)}<small> ${unit(h, id)}</small>` : "—";
     const bandEl = s.getElementById("band");
     bandEl.textContent = band.label;
     bandEl.style.color = band.color;
+    this._tap(moistEl, id);
+    this._tap(bandEl, id);
 
     /* No soil defaults carry advice, so this stays hidden unless configured. */
     const advice = s.getElementById("advice");
@@ -1509,14 +1553,18 @@ class EcowittIndoorCard extends EcowittBase {
     this._syncHead(s.getElementById("head"), "Indoor");
 
     const t = this._ids.temp_in || this._ids.temp_out;
-    s.getElementById("temp").innerHTML = t
+    const tEl = s.getElementById("temp");
+    tEl.innerHTML = t
       ? `${fmt(h, t, 1)}<small>${unit(h, t)}</small>`
       : "—";
+    this._tap(tEl, t);
 
     const hu = this._ids.hum_in || this._ids.hum_out;
-    s.getElementById("hum").textContent = hu
+    const huEl = s.getElementById("hum");
+    huEl.textContent = hu
       ? `Humidity ${fmt(h, hu, 0)}${unit(h, hu)}`
       : "";
+    this._tap(huEl, hu);
 
     this._syncGrid(s.getElementById("grid"), [
       { key: "press_rel", label: "Relative", icon: "mdi:gauge", digits: 0 },

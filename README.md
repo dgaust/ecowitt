@@ -44,7 +44,10 @@ dropdown.
 | `ecowitt-indoor-card` | Gateway indoor temperature and humidity with relative and absolute pressure |
 
 Every value opens Home Assistant's own more-info dialog on tap, so history is
-one click away.
+one click away. That includes the large hero readings — the temperature, wind
+speed, rain rate, UV index and soil moisture — and the smaller lines beside
+them, such as feels-like and dew point, which each open their own sensor
+rather than the card's headline one.
 
 ## Install
 
