@@ -14,7 +14,7 @@
  * hard-codes an entity id and extra probes work without a code change.
  */
 
-const CARD_VERSION = "1.17.0";
+const CARD_VERSION = "1.17.1";
 
 /* Plain text rather than a %c-styled banner: console styling can only take
  * literal colours, and nothing in this file should hardcode one. */
@@ -551,12 +551,14 @@ const BASE_CSS = `
     margin-left: var(--ha-space-1, 4px);
   }
   ha-icon { --mdc-icon-size: 15px; color: var(--secondary-text-color); }
+  /* Tiles and rows: cursor only, same as the readings. Nothing on a card
+   * recolours under the pointer. (The editor's inputs and buttons keep
+   * their hover states — those are controls, not data.) */
   .clickable { cursor: pointer; }
-  .clickable:hover { background: var(--divider-color); }
-  /* Tappable text — the hero readings. A background wash suits a tile but
-   * not a 40px numeral, so these dim slightly instead. */
+  /* Tappable text — the hero readings. The cursor is the whole affordance:
+   * a reading changing colour under the pointer reads as a state change in
+   * the data, which is misleading on a card whose job is to show state. */
   .tap { cursor: pointer; }
-  .tap:hover { opacity: 0.75; }
   .bar {
     height: 6px;
     border-radius: var(--ha-border-radius-pill, 9999px);
