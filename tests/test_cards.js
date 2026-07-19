@@ -40,7 +40,8 @@ vm.runInContext(
     "\nglobalThis.__api = { discover, cardinal, windLabel," +
     " compassSvg, fmt, num, metricEntries, metricEntryFor, METRIC_CATALOGUE," +
     " DEFAULT_METRICS, withHubMetrics, parseScale, bandFor, scaleColor," +
-    " scaleGradient, scaleTicks, DEFAULT_SOIL_SCALE, DEFAULT_UV_SCALE };",
+    " scaleGradient, scaleTicks, DEFAULT_SOIL_SCALE, DEFAULT_UV_SCALE," +
+    " NEEDLE_STYLES, DEFAULT_NEEDLE };",
   ctx
 );
 const api = ctx.__api;
@@ -380,6 +381,40 @@ check("cardinal(-90) normalises", api.cardinal(-90), "W");
 check("cardinal(null)", api.cardinal(null), "—");
 check("windLabel(0)", api.windLabel(0), "Calm");
 check("windLabel(3.96)", api.windLabel(3.96), "Light air");
+
+/* ---- needle styles ---- */
+console.log("needle styles");
+const svgFor = (style, size) => api.compassSvg(size || 132, 89, null, style);
+
+assert("both styles are offered",
+  Object.keys(api.NEEDLE_STYLES).sort().join(",") === "arrow,classic");
+check("the clearer one is the default", api.DEFAULT_NEEDLE, "arrow");
+
+/* The arrow style is only unambiguous if its two ends differ: a hollow
+ * ring at the source and a solid head downwind. */
+assert("arrow has a hollow tail ring",
+  /<circle[^>]*fill="none"[^>]*stroke="var\(--primary-color\)"/.test(svgFor("arrow")));
+assert("arrow has a solid head", /<polygon[^>]*fill="var\(--primary-color\)"/.test(svgFor("arrow")));
+assert("classic is a single solid pointer",
+  svgFor("classic").match(/<polygon/g).length === 1 &&
+  !/<circle[^>]*fill="none"[^>]*stroke="var\(--primary-color\)"/.test(svgFor("classic")));
+
+/* Whatever the style, the rotation and the geometry must hold. */
+["arrow", "classic"].forEach((style) => {
+  [72, 132].forEach((size) => {
+    const svg = svgFor(style, size);
+    assert(`${style} at ${size}px is well formed`,
+      svg.includes("<svg") && svg.trim().endsWith("</svg>") && !svg.includes("NaN"));
+  });
+  const m = svgFor(style).match(/rotate\((\d+(?:\.\d+)?) /);
+  check(`${style} still points downwind`, m && Number(m[1]), 269);
+});
+
+/* An unset or misspelled style must not blank the needle. */
+assert("unset style falls back", svgFor(undefined).includes("polygon"));
+assert("unknown style falls back", svgFor("banana").includes("polygon"));
+assert("unset matches the default exactly",
+  svgFor(undefined) === svgFor(api.DEFAULT_NEEDLE));
 
 /* ---- wind arrow direction ---- */
 console.log("wind arrow");

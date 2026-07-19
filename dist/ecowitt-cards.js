@@ -14,7 +14,7 @@
  * hard-codes an entity id and extra probes work without a code change.
  */
 
-const CARD_VERSION = "1.15.0";
+const CARD_VERSION = "1.16.0";
 
 /* Plain text rather than a %c-styled banner: console styling can only take
  * literal colours, and nothing in this file should hardcode one. */
@@ -786,7 +786,44 @@ class EcowittBase extends HTMLElement {
  * Wind compass (shared SVG)
  * ------------------------------------------------------------------ */
 
-function compassSvg(size, dir, avgDir) {
+/*
+ * Needle shapes, drawn pointing up: the tip is the downwind end and the
+ * tail is where the wind comes from. Sizes scale off the 132px the wind
+ * card uses, because the weather card draws the same compass at 72px and
+ * anything tuned only for the large size falls apart there.
+ */
+const NEEDLE_STYLES = {
+  /* A hollow ring at the source and a solid head downwind. The two ends
+   * are different kinds of object, so which is which survives 72px. */
+  arrow(size, c, r) {
+    const k = size / 132;
+    const tail = c + r - 9;
+    const tip = c - r + 7;
+    return `
+      <circle cx="${c}" cy="${tail}" r="${4.2 * k}" fill="none"
+              stroke="var(--primary-color)" stroke-width="${2 * k}"/>
+      <line x1="${c}" y1="${tail - 4.2 * k}" x2="${c}" y2="${tip + 13 * k}"
+            stroke="var(--primary-color)" stroke-width="${2.4 * k}" stroke-linecap="round"/>
+      <polygon points="${c},${tip} ${c - 6.5 * k},${tip + 15 * k} ${c + 6.5 * k},${tip + 15 * k}"
+               fill="var(--primary-color)"/>`;
+  },
+
+  /* The original solid pointer, kept so the change is reversible. */
+  classic(size, c, r) {
+    return `
+      <polygon points="${c},${c - r + 12} ${c - size * 0.055},${c + size * 0.07} ${c},${c + size * 0.035} ${c + size * 0.055},${c + size * 0.07}"
+               fill="var(--primary-color)"/>`;
+  },
+};
+
+const DEFAULT_NEEDLE = "arrow";
+
+function needleShape(style, size, c, r) {
+  const draw = NEEDLE_STYLES[style] || NEEDLE_STYLES[DEFAULT_NEEDLE];
+  return draw(size, c, r);
+}
+
+function compassSvg(size, dir, avgDir, style) {
   const c = size / 2;
   const r = c - 10;
   const ticks = [];
@@ -822,8 +859,7 @@ function compassSvg(size, dir, avgDir) {
     dir === null
       ? ""
       : `<g transform="rotate(${arrow(dir)} ${c} ${c})">
-           <polygon points="${c},${c - r + 12} ${c - size * 0.055},${c + size * 0.07} ${c},${c + size * 0.035} ${c + size * 0.055},${c + size * 0.07}"
-                    fill="var(--primary-color)"/>
+           ${needleShape(style, size, c, r)}
          </g>`;
 
   const ghost =
@@ -912,7 +948,7 @@ class EcowittWeatherCard extends EcowittBase {
     const dir = num(h, this._ids.wind_dir);
     const spd = this._ids.wind_speed;
     s.getElementById("windmini").innerHTML = `
-      ${compassSvg(72, dir, num(h, this._ids.wind_dir_avg))}
+      ${compassSvg(72, dir, num(h, this._ids.wind_dir_avg), this._config.needle)}
       <div class="lbl">${dir === null ? "—" : `from ${cardinal(dir)}`}${
         spd ? ` · ${fmt(h, spd, 1)} ${unit(h, spd)}` : ""
       }</div>`;
@@ -1016,7 +1052,8 @@ class EcowittWindCard extends EcowittBase {
 
     const dir = num(h, this._ids.wind_dir);
     const avg = num(h, this._ids.wind_dir_avg);
-    s.getElementById("compass").innerHTML = compassSvg(132, dir, avg);
+    s.getElementById("compass").innerHTML =
+      compassSvg(132, dir, avg, this._config.needle);
 
     const spd = this._ids.wind_speed;
     s.getElementById("speed").innerHTML = spd
@@ -1514,7 +1551,7 @@ class EcowittCardEditor extends HTMLElement {
   }
 
   _schema() {
-    return [
+    const schema = [
       {
         name: "device",
         required: true,
@@ -1522,6 +1559,24 @@ class EcowittCardEditor extends HTMLElement {
       },
       { name: "name", selector: { text: {} } },
     ];
+
+    /* Only the two cards that actually draw a compass. */
+    const type = (this._config && this._config.type) || "";
+    if (type.includes("wind-card") || type.includes("weather-card")) {
+      schema.push({
+        name: "needle",
+        selector: {
+          select: {
+            mode: "dropdown",
+            options: [
+              { value: "arrow", label: "Dot and arrow" },
+              { value: "classic", label: "Classic pointer" },
+            ],
+          },
+        },
+      });
+    }
+    return schema;
   }
 
   _render() {
@@ -1529,8 +1584,11 @@ class EcowittCardEditor extends HTMLElement {
 
     if (!this._form) {
       this._form = document.createElement("ha-form");
-      this._form.computeLabel = (s) =>
-        s.name === "device" ? "Ecowitt device" : "Name (optional)";
+      this._form.computeLabel = (s) => {
+        if (s.name === "device") return "Ecowitt device";
+        if (s.name === "needle") return "Compass needle";
+        return "Name (optional)";
+      };
       this._form.addEventListener("value-changed", (ev) => {
         const cfg = { ...this._config, ...ev.detail.value };
         Object.keys(cfg).forEach((k) => {

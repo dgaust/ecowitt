@@ -25,6 +25,19 @@ Both conventions are used in the wild, and the difference is only in the
 drawing: the degrees are the same either way. The rows say "from E 89°" so the
 reading is unambiguous whichever way you read the needle. The dashed marker
 for average direction follows the same convention.
+
+Two needle shapes are available, on the wind card and on the weather card's
+inline compass:
+
+```yaml
+needle: arrow      # default — hollow ring at the source, solid head downwind
+needle: classic    # the original solid pointer
+```
+
+`arrow` is the default because its two ends are different kinds of object, so
+which end is which stays legible at the weather card's 72px compass, where a
+symmetrical shape does not. Both are in the card editor's **Compass needle**
+dropdown.
 | `ecowitt-rain-card` | Rain rate, a live wet/dry indicator from the piezo sensor, and accumulation bars for the hour, today, 24 hours, the week and the current event |
 | `ecowitt-solar-card` | UV index against a banded exposure scale, plus irradiance and illuminance |
 | `ecowitt-soil-card` | One soil probe: moisture with a dry/ideal/saturated band, battery, signal and channel |
