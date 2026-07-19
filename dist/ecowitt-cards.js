@@ -14,7 +14,7 @@
  * hard-codes an entity id and extra probes work without a code change.
  */
 
-const CARD_VERSION = "1.17.1";
+const CARD_VERSION = "1.18.0";
 
 /* Plain text rather than a %c-styled banner: console styling can only take
  * literal colours, and nothing in this file should hardcode one. */
@@ -352,7 +352,7 @@ const METRIC_CATALOGUE = {
   wind_gust: { label: "Gust", icon: "mdi:weather-windy", digits: 1 },
   max_gust: { label: "Max gust", icon: "mdi:speedometer-medium", digits: 1 },
   wind_dir: { label: "Direction", icon: "mdi:compass-outline", digits: 0 },
-  wind_dir_avg: { label: "Avg direction", icon: "mdi:compass-outline", digits: 0 },
+  wind_dir_avg: { label: "Avg direction (10 min)", icon: "mdi:compass-outline", digits: 0 },
   rain_rate: { label: "Rain rate", icon: "mdi:speedometer", digits: 1 },
   rain_hourly: { label: "Rain this hour", icon: "mdi:weather-rainy", digits: 1 },
   rain_daily: { label: "Rain today", icon: "mdi:weather-pouring", digits: 1 },
@@ -883,6 +883,7 @@ function compassSvg(size, dir, avgDir, style) {
     dir === null
       ? ""
       : `<g transform="rotate(${arrow(dir)} ${c} ${c})">
+           <title>Current wind direction</title>
            ${needleShape(style, size, c, r)}
          </g>`;
 
@@ -890,6 +891,7 @@ function compassSvg(size, dir, avgDir, style) {
     avgDir === null || avgDir === undefined
       ? ""
       : `<g transform="rotate(${arrow(avgDir)} ${c} ${c})" opacity="0.35">
+           <title>Average wind direction over the last 10 minutes</title>
            <line x1="${c}" y1="${c}" x2="${c}" y2="${c - r + 14}"
                  stroke="var(--primary-text-color)" stroke-width="2"
                  stroke-dasharray="3 3" stroke-linecap="round"/>
@@ -1110,7 +1112,11 @@ class EcowittWindCard extends EcowittBase {
       if (id) rows.push({ id, label, value: `${fmt(h, id, 1)} ${unit(h, id)}` });
     }
     if (this._ids.wind_dir_avg && avg !== null) {
-      rows.push({ id: this._ids.wind_dir_avg, label: "Avg dir", value: bearing(avg) });
+      rows.push({
+        id: this._ids.wind_dir_avg,
+        label: "10-min avg",
+        value: bearing(avg),
+      });
     }
 
     /* Rebuild only when the set of rows changes; otherwise patch the

@@ -23,8 +23,13 @@ console shows. So an easterly draws an arrow pointing west.
 
 Both conventions are used in the wild, and the difference is only in the
 drawing: the degrees are the same either way. The rows say "from E 89°" so the
-reading is unambiguous whichever way you read the needle. The dashed marker
-for average direction follows the same convention.
+reading is unambiguous whichever way you read the needle.
+
+**The faint dashed marker is the average direction over the last 10 minutes**,
+drawn with the same downwind convention as the solid needle. When the wind is
+steady the two overlap; when it is shifting they splay apart, and the angle
+between them is a rough read on how variable it is. Both markers carry a
+tooltip saying which is which, and the wind card labels the row "10-min avg".
 
 Two needle shapes are available, on the wind card and on the weather card's
 inline compass:

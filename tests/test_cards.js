@@ -382,6 +382,22 @@ check("cardinal(null)", api.cardinal(null), "—");
 check("windLabel(0)", api.windLabel(0), "Calm");
 check("windLabel(3.96)", api.windLabel(3.96), "Light air");
 
+/* ---- compass markers explain themselves ---- */
+console.log("compass titles");
+/* The dashed marker prompted a "what is that line?" question, so both
+ * markers carry a title. The average is over the last 10 minutes. */
+const withBoth = api.compassSvg(132, 89, 44, "arrow");
+assert("the dashed marker names the 10-minute window",
+  /<title>Average wind direction over the last 10 minutes<\/title>/.test(withBoth));
+assert("the solid needle says it is the current direction",
+  /<title>Current wind direction<\/title>/.test(withBoth));
+assert("no dangling title when there is no average",
+  !api.compassSvg(132, 89, null, "arrow").includes("Average wind direction"));
+assert("the current-direction title still appears without an average",
+  api.compassSvg(132, 89, null, "arrow").includes("Current wind direction"));
+assert("no titles at all when direction is unknown",
+  !api.compassSvg(132, null, null, "arrow").includes("<title>"));
+
 /* ---- needle styles ---- */
 console.log("needle styles");
 const svgFor = (style, size) => api.compassSvg(size || 132, 89, null, style);
