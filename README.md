@@ -155,6 +155,72 @@ built on the WS90 shows the live wet/dry indicator — that comes from the piezo
 `srain_piezo` flag, which a tipping bucket doesn't have. Both tiles are driven
 by discovery, so each card shows what its device actually has.
 
+## Scales
+
+The soil and solar cards draw a banded track: a coloured axis with a marker
+showing where the current reading falls. Both read their bands from config, so
+the thresholds are yours to set.
+
+```yaml
+type: custom:ecowitt-soil-card
+device: <a soil probe>
+scale:
+  - to: 12
+    label: Water now
+    color: error
+  - to: 45
+    label: Comfortable
+    color: success
+  - to: 70
+    label: Damp
+    color: warning
+  - label: Too wet          # no `to` — runs to the top of the axis
+    color: error
+```
+
+Each band applies from the previous boundary up to but not including its `to`.
+The last band omits `to` and runs to the axis maximum. Bands may be written in
+any order; the open-ended one always sorts last.
+
+`color` takes a theme token — `success`, `warning`, `error`, `info`, `primary`,
+`neutral`, or the aliases `good`, `caution`, `danger` — so the card follows the
+active theme. Anything else is passed through unchanged if you want a literal.
+
+To move the axis maximum as well, use the object form:
+
+```yaml
+scale:
+  max: 60
+  bands:
+    - to: 30
+      label: Low
+      color: warning
+    - label: High
+      color: info
+```
+
+A malformed `scale` falls back to the card's default rather than rendering a
+broken axis.
+
+### A caveat on the soil defaults
+
+The **UV defaults follow the WHO exposure categories**. The **soil defaults
+follow nothing** — they are round numbers centred on 50%, not research.
+
+Two reasons to set your own. A capacitive probe like the WH51 reports a
+relative index between its dry and wet calibration points, not volumetric water
+content, and Ecowitt provides a custom calibration mode precisely because
+different soil types give very different readings at the same real moisture.
+And even calibrated, the useful range depends on soil texture and on what is
+planted.
+
+For dry-adapted Australian natives — banksia, grevillea, hakea and other
+Proteaceae — sustained wetness is the risk, since it invites *Phytophthora
+cinnamomi*, for which there is no effective treatment. A scale that treats the
+top of the range as a warning rather than the middle as ideal is likely closer
+to what those plants want. Read the band labels as your configuration, not as
+horticultural advice.
+
 ## Troubleshooting
 
 **A sensor is paired but has no entities.** The integration builds its device

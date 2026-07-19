@@ -14,7 +14,7 @@
  * hard-codes an entity id and extra probes work without a code change.
  */
 
-const CARD_VERSION = "1.10.0";
+const CARD_VERSION = "1.11.0";
 
 /* Plain text rather than a %c-styled banner: console styling can only take
  * literal colours, and nothing in this file should hardcode one. */
@@ -181,22 +181,127 @@ function windLabel(kmh) {
   return "Violent storm";
 }
 
-function uvBand(uv) {
-  if (uv === null) return { label: "—", color: "var(--disabled-color)" };
-  if (uv < 3) return { label: "Low", color: "var(--success-color)" };
-  if (uv < 6) return { label: "Moderate", color: "var(--warning-color)" };
-  if (uv < 8) return { label: "High", color: "var(--warning-color)" };
-  if (uv < 11) return { label: "Very high", color: "var(--error-color)" };
-  return { label: "Extreme", color: "var(--error-color)" };
+/* ------------------------------------------------------------------ *
+ * Scales
+ *
+ * A scale is an axis maximum plus ordered bands: `{ to, label, color }`,
+ * where the final band has no `to` and runs to the top. Both the soil and
+ * UV cards read theirs from config, because the right thresholds are a
+ * property of the garden, not of this code.
+ *
+ * The UV defaults follow the WHO exposure categories. The soil defaults do
+ * not follow anything — a capacitive probe reports a relative index
+ * between its dry and wet calibration points, not volumetric water
+ * content, and the useful range depends on soil texture and planting. They
+ * are a starting point to be overridden, not a recommendation.
+ * ------------------------------------------------------------------ */
+
+const SCALE_COLORS = {
+  success: "var(--success-color)",
+  good: "var(--success-color)",
+  warning: "var(--warning-color)",
+  caution: "var(--warning-color)",
+  error: "var(--error-color)",
+  danger: "var(--error-color)",
+  info: "var(--info-color)",
+  primary: "var(--primary-color)",
+  neutral: "var(--disabled-color)",
+};
+
+/* Named tokens keep a config themeable; anything else is passed through so
+ * a user who wants a literal colour is not blocked by our convention. */
+function scaleColor(name) {
+  if (!name) return "var(--disabled-color)";
+  return SCALE_COLORS[name] || String(name);
 }
 
-function soilBand(pct) {
-  if (pct === null) return { label: "—", color: "var(--disabled-color)" };
-  if (pct < 20) return { label: "Very dry", color: "var(--error-color)" };
-  if (pct < 35) return { label: "Dry", color: "var(--warning-color)" };
-  if (pct < 65) return { label: "Ideal", color: "var(--success-color)" };
-  if (pct < 80) return { label: "Moist", color: "var(--info-color)" };
-  return { label: "Saturated", color: "var(--info-color)" };
+const DEFAULT_UV_SCALE = {
+  max: 12,
+  bands: [
+    { to: 3, label: "Low", color: "success" },
+    { to: 6, label: "Moderate", color: "warning" },
+    { to: 8, label: "High", color: "warning" },
+    { to: 11, label: "Very high", color: "error" },
+    { label: "Extreme", color: "error" },
+  ],
+};
+
+const DEFAULT_SOIL_SCALE = {
+  max: 100,
+  bands: [
+    { to: 20, label: "Very dry", color: "error" },
+    { to: 35, label: "Dry", color: "warning" },
+    { to: 65, label: "Ideal", color: "success" },
+    { to: 80, label: "Moist", color: "info" },
+    { label: "Saturated", color: "info" },
+  ],
+};
+
+/* Accepts either a bare list of bands or `{ max, bands }`. Malformed input
+ * falls back to the card's default rather than rendering a broken axis. */
+function parseScale(config, fallback) {
+  const raw = config && config.scale;
+  let bands = null;
+  let max = fallback.max;
+
+  if (Array.isArray(raw)) {
+    bands = raw;
+  } else if (raw && typeof raw === "object") {
+    if (Array.isArray(raw.bands)) bands = raw.bands;
+    if (Number.isFinite(raw.max) && raw.max > 0) max = raw.max;
+  }
+  if (!bands) return fallback;
+
+  const clean = bands
+    .filter((b) => b && typeof b === "object" && b.label !== undefined)
+    .map((b) => ({
+      to: Number.isFinite(b.to) ? b.to : null,
+      label: String(b.label),
+      color: b.color,
+    }))
+    /* Open-ended band sorts last whatever order it was written in. */
+    .sort((a, b) => (a.to === null ? Infinity : a.to) - (b.to === null ? Infinity : b.to));
+
+  return clean.length ? { max, bands: clean } : fallback;
+}
+
+function bandFor(value, scale) {
+  if (value === null) return { label: "—", color: "var(--disabled-color)" };
+  for (const b of scale.bands) {
+    if (b.to === null || value < b.to) {
+      return { label: b.label, color: scaleColor(b.color) };
+    }
+  }
+  const last = scale.bands[scale.bands.length - 1];
+  return { label: last.label, color: scaleColor(last.color) };
+}
+
+/* Hard stops rather than a blend, so a boundary reads as a boundary. */
+function scaleGradient(scale) {
+  const stops = [];
+  let prev = 0;
+  scale.bands.forEach((b, i) => {
+    const last = i === scale.bands.length - 1;
+    const end = b.to === null || last ? scale.max : Math.min(b.to, scale.max);
+    const c = scaleColor(b.color);
+    stops.push(`${c} ${(prev / scale.max) * 100}%`, `${c} ${(end / scale.max) * 100}%`);
+    prev = end;
+  });
+  return `linear-gradient(to right, ${stops.join(", ")})`;
+}
+
+/* Ticks sit at the band boundaries, so the axis explains the colours. */
+function scaleTicks(scale) {
+  const points = [0, ...scale.bands.map((b) => b.to).filter((t) => t !== null && t <= scale.max)];
+  return [...new Set(points)]
+    .map((v) => {
+      const pct = (v / scale.max) * 100;
+      const align = pct <= 0 ? "left:0;transform:none"
+        : pct >= 100 ? "right:0;left:auto;transform:none"
+        : `left:${pct}%;transform:translateX(-50%)`;
+      return `<span style="${align}">${v}</span>`;
+    })
+    .join("");
 }
 
 /* ------------------------------------------------------------------ *
@@ -1077,16 +1182,10 @@ class EcowittSolarCard extends EcowittBase {
           color: var(--primary-text-color); font-variant-numeric: tabular-nums;
         }
         .band { font-size: var(--ha-font-size-m, 14px); font-weight: var(--ha-font-weight-medium, 500); }
-        /* Band boundaries sit at the WHO thresholds (3/6/8/11) mapped onto
-         * the same 0–12 linear range the marker uses. */
+        /* Gradient and ticks are generated from the configured scale. */
         .scale {
           position: relative; height: 6px;
           border-radius: var(--ha-border-radius-pill, 9999px);
-          background: linear-gradient(to right,
-            var(--success-color) 0%, var(--success-color) 25%,
-            var(--warning-color) 25%, var(--warning-color) 50%,
-            var(--warning-color) 50%, var(--warning-color) 66.7%,
-            var(--error-color) 66.7%, var(--error-color) 100%);
           opacity: 0.85;
         }
         .scale > i {
@@ -1098,10 +1197,11 @@ class EcowittSolarCard extends EcowittBase {
           transition: left 240ms ease-in-out;
         }
         .scaleticks {
-          display: flex; justify-content: space-between;
+          position: relative; height: 1em;
           font-size: var(--ha-font-size-xs, 10px);
           color: var(--secondary-text-color); margin-top: var(--ha-space-1, 4px);
         }
+        .scaleticks span { position: absolute; top: 0; }
       </style>
       <ha-card>
         <div id="head"></div>
@@ -1110,8 +1210,8 @@ class EcowittSolarCard extends EcowittBase {
           <div class="band" id="band"></div>
         </div>
         <div>
-          <div class="scale"><i id="marker" style="left:0%"></i></div>
-          <div class="scaleticks"><span>0</span><span>3</span><span>6</span><span>9</span><span>12+</span></div>
+          <div class="scale" id="scale"><i id="marker" style="left:0%"></i></div>
+          <div class="scaleticks" id="ticks"></div>
         </div>
         <div class="grid" id="grid"></div>
       </ha-card>`;
@@ -1123,14 +1223,25 @@ class EcowittSolarCard extends EcowittBase {
     const s = this._shadow();
     this._syncHead(s.getElementById("head"), "Solar & UV");
 
+    const scale = parseScale(this._config, DEFAULT_UV_SCALE);
     const uv = num(h, this._ids.uv);
-    const band = uvBand(uv);
+    const band = bandFor(uv, scale);
+
     s.getElementById("uv").textContent = uv === null ? "—" : String(Math.round(uv));
     const bandEl = s.getElementById("band");
     bandEl.textContent = band.label;
     bandEl.style.color = band.color;
+
+    /* Repaint the axis only when the scale changes, not every tick. */
+    const track = s.getElementById("scale");
+    const sig = JSON.stringify(scale);
+    if (track.dataset.sig !== sig) {
+      track.dataset.sig = sig;
+      track.style.backgroundImage = scaleGradient(scale);
+      s.getElementById("ticks").innerHTML = scaleTicks(scale);
+    }
     s.getElementById("marker").style.left =
-      `${Math.max(0, Math.min(100, ((uv === null ? 0 : uv) / 12) * 100))}%`;
+      `${Math.max(0, Math.min(100, ((uv === null ? 0 : uv) / scale.max) * 100))}%`;
 
     this._syncGrid(s.getElementById("grid"), [
       { key: "solar_rad", label: "Irradiance", icon: "mdi:solar-power-variant", digits: 0 },
@@ -1167,11 +1278,28 @@ class EcowittSoilCard extends EcowittBase {
           font-size: var(--ha-font-size-m, 14px);
           font-weight: var(--ha-font-weight-medium, 500); margin-left: auto;
         }
+        /* The track shows the configured bands; the marker shows where the
+         * reading falls in them. A plain fill implied "more is better",
+         * which is wrong when the top of the range is a problem. */
+        .track {
+          position: relative; height: 6px;
+          border-radius: var(--ha-border-radius-pill, 9999px);
+          opacity: 0.85;
+        }
+        .track > i {
+          position: absolute; top: -4px; width: 4px; height: 14px;
+          border-radius: var(--ha-border-radius-sm, 4px);
+          background: var(--primary-text-color);
+          box-shadow: 0 0 0 2px var(--card-background-color);
+          transform: translateX(-2px);
+          transition: left 240ms ease-in-out;
+        }
         .zones {
-          display: flex; justify-content: space-between;
+          position: relative; height: 1em;
           font-size: var(--ha-font-size-xs, 10px);
           color: var(--secondary-text-color); margin-top: var(--ha-space-1, 4px);
         }
+        .zones span { position: absolute; top: 0; }
       </style>
       <ha-card>
         <div id="head"></div>
@@ -1180,8 +1308,8 @@ class EcowittSoilCard extends EcowittBase {
           <div class="band" id="band"></div>
         </div>
         <div>
-          <div class="bar"><i id="fill" style="width:0%"></i></div>
-          <div class="zones"><span>Dry</span><span>Ideal</span><span>Saturated</span></div>
+          <div class="track" id="track"><i id="marker" style="left:0%"></i></div>
+          <div class="zones" id="zones"></div>
         </div>
       </ha-card>`;
     this._built = true;
@@ -1192,9 +1320,10 @@ class EcowittSoilCard extends EcowittBase {
     const s = this._shadow();
     this._syncHead(s.getElementById("head"), "Soil", true);
 
+    const scale = parseScale(this._config, DEFAULT_SOIL_SCALE);
     const id = this._ids.soil_moisture;
     const pct = num(h, id);
-    const band = soilBand(pct);
+    const band = bandFor(pct, scale);
 
     s.getElementById("moist").innerHTML =
       id ? `${fmt(h, id, 0)}<small> ${unit(h, id)}</small>` : "—";
@@ -1202,9 +1331,15 @@ class EcowittSoilCard extends EcowittBase {
     bandEl.textContent = band.label;
     bandEl.style.color = band.color;
 
-    const fill = s.getElementById("fill");
-    fill.style.width = `${Math.max(0, Math.min(100, pct === null ? 0 : pct))}%`;
-    fill.style.background = band.color;
+    const track = s.getElementById("track");
+    const sig = JSON.stringify(scale);
+    if (track.dataset.sig !== sig) {
+      track.dataset.sig = sig;
+      track.style.backgroundImage = scaleGradient(scale);
+      s.getElementById("zones").innerHTML = scaleTicks(scale);
+    }
+    s.getElementById("marker").style.left =
+      `${Math.max(0, Math.min(100, ((pct === null ? 0 : pct) / scale.max) * 100))}%`;
 
     this._bindCells();
   }

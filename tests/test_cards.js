@@ -37,9 +37,10 @@ const ctx = vm.createContext({
 
 vm.runInContext(
   fs.readFileSync(CARD, "utf8") +
-    "\nglobalThis.__api = { discover, uvBand, soilBand, cardinal, windLabel," +
+    "\nglobalThis.__api = { discover, cardinal, windLabel," +
     " compassSvg, fmt, num, metricEntries, metricEntryFor, METRIC_CATALOGUE," +
-    " DEFAULT_METRICS, withHubMetrics };",
+    " DEFAULT_METRICS, withHubMetrics, parseScale, bandFor, scaleColor," +
+    " scaleGradient, scaleTicks, DEFAULT_SOIL_SCALE, DEFAULT_UV_SCALE };",
   ctx
 );
 const api = ctx.__api;
@@ -257,6 +258,80 @@ check("gateway gains nothing", Object.keys(gwHub).length, Object.keys(gw).length
 assert("unknown device is handled",
   Object.keys(withHubMetrics(hass, "nope", {})).length === 0);
 
+/* ---- configurable scales ---- */
+console.log("scales");
+const { parseScale, bandFor, scaleColor, scaleGradient, scaleTicks,
+        DEFAULT_SOIL_SCALE, DEFAULT_UV_SCALE } = api;
+
+const labelAt = (v, scale) => bandFor(v, scale).label;
+
+/* Defaults still behave as before. */
+const soilDef = parseScale({}, DEFAULT_SOIL_SCALE);
+check("default soil 10", labelAt(10, soilDef), "Very dry");
+check("default soil 51", labelAt(51, soilDef), "Ideal");
+check("default soil 95", labelAt(95, soilDef), "Saturated");
+check("null reads as a dash", labelAt(null, soilDef), "—");
+const uvDef = parseScale({}, DEFAULT_UV_SCALE);
+check("default uv 0", labelAt(0, uvDef), "Low");
+check("default uv 7", labelAt(7, uvDef), "High");
+check("default uv 12", labelAt(12, uvDef), "Extreme");
+
+/* A bare array replaces the bands and keeps the default max. */
+const custom = parseScale({ scale: [
+  { to: 40, label: "Too dry", color: "error" },
+  { label: "Wet enough", color: "info" },
+] }, DEFAULT_SOIL_SCALE);
+check("custom band low", labelAt(10, custom), "Too dry");
+check("custom band high", labelAt(90, custom), "Wet enough");
+check("custom keeps default max", custom.max, 100);
+check("boundary is exclusive at the top", labelAt(40, custom), "Wet enough");
+check("just below the boundary", labelAt(39.9, custom), "Too dry");
+
+/* The object form can move the axis maximum too. */
+const scaled = parseScale({ scale: { max: 60, bands: [
+  { to: 30, label: "Low", color: "warning" },
+  { label: "High", color: "success" },
+] } }, DEFAULT_SOIL_SCALE);
+check("explicit max is honoured", scaled.max, 60);
+check("band within new axis", labelAt(45, scaled), "High");
+
+/* Order shouldn't matter; the open-ended band always sorts last. */
+const unordered = parseScale({ scale: [
+  { label: "Top", color: "info" },
+  { to: 50, label: "Bottom", color: "error" },
+] }, DEFAULT_SOIL_SCALE);
+check("unordered bands sort", unordered.bands.map((b) => b.label).join(","), "Bottom,Top");
+check("unordered resolves low", labelAt(10, unordered), "Bottom");
+check("unordered resolves high", labelAt(80, unordered), "Top");
+
+/* Malformed config must fall back rather than render a broken axis. */
+check("empty array falls back", parseScale({ scale: [] }, DEFAULT_SOIL_SCALE), DEFAULT_SOIL_SCALE);
+check("garbage falls back", parseScale({ scale: "nope" }, DEFAULT_SOIL_SCALE), DEFAULT_SOIL_SCALE);
+check("bands of junk fall back",
+  parseScale({ scale: [null, 5, {}] }, DEFAULT_SOIL_SCALE), DEFAULT_SOIL_SCALE);
+check("absent scale falls back", parseScale({}, DEFAULT_SOIL_SCALE), DEFAULT_SOIL_SCALE);
+check("zero max is rejected",
+  parseScale({ scale: { max: 0, bands: [{ label: "x" }] } }, DEFAULT_SOIL_SCALE).max, 100);
+
+/* Colours resolve to theme tokens, with pass-through for anything else. */
+check("token maps to a theme var", scaleColor("error"), "var(--error-color)");
+check("alias maps too", scaleColor("danger"), "var(--error-color)");
+check("missing colour is neutral", scaleColor(undefined), "var(--disabled-color)");
+check("unknown value passes through", scaleColor("var(--my-color)"), "var(--my-color)");
+
+/* The axis is generated, so it must cover the full width and stop there. */
+const grad = scaleGradient(soilDef);
+assert("gradient starts at 0%", grad.includes("0%"));
+assert("gradient ends at 100%", grad.includes("100%)"));
+assert("gradient has no NaN", !grad.includes("NaN"));
+const ticks = scaleTicks(soilDef);
+assert("ticks include the boundaries",
+  ["0", "20", "35", "65", "80"].every((v) => ticks.includes(`>${v}<`)));
+assert("ticks have no NaN", !ticks.includes("NaN"));
+assert("a single open band still renders",
+  !scaleGradient(parseScale({ scale: [{ label: "All", color: "info" }] },
+    DEFAULT_SOIL_SCALE)).includes("NaN"));
+
 /* ---- helpers ---- */
 console.log("helpers");
 check("cardinal(0)", api.cardinal(0), "N");
@@ -265,12 +340,6 @@ check("cardinal(180)", api.cardinal(180), "S");
 check("cardinal(359) wraps to N", api.cardinal(359), "N");
 check("cardinal(-90) normalises", api.cardinal(-90), "W");
 check("cardinal(null)", api.cardinal(null), "—");
-check("uvBand(0)", api.uvBand(0).label, "Low");
-check("uvBand(7)", api.uvBand(7).label, "High");
-check("uvBand(12)", api.uvBand(12).label, "Extreme");
-check("uvBand(null)", api.uvBand(null).label, "—");
-check("soilBand(51)", api.soilBand(51).label, "Ideal");
-check("soilBand(10)", api.soilBand(10).label, "Very dry");
 check("windLabel(0)", api.windLabel(0), "Calm");
 check("windLabel(3.96)", api.windLabel(3.96), "Light air");
 
