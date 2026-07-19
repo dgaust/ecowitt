@@ -381,6 +381,27 @@ check("cardinal(null)", api.cardinal(null), "—");
 check("windLabel(0)", api.windLabel(0), "Calm");
 check("windLabel(3.96)", api.windLabel(3.96), "Light air");
 
+/* ---- wind arrow direction ---- */
+console.log("wind arrow");
+/* The bearing is where the wind comes FROM; the arrow is drawn pointing
+ * downwind, 180 degrees opposite, matching the Ecowitt console. Pull the
+ * needle's own rotation out of the SVG rather than trusting the maths. */
+const needleRotation = (deg) => {
+  const svg = api.compassSvg(120, deg, null);
+  const m = svg.match(/rotate\((\d+(?:\.\d+)?) /);
+  return m ? Number(m[1]) : null;
+};
+check("wind from N draws south", needleRotation(0), 180);
+check("wind from E draws west", needleRotation(90), 270);
+check("wind from S draws north", needleRotation(180), 0);
+check("wind from W draws east", needleRotation(270), 90);
+check("89 draws 269", needleRotation(89), 269);
+check("wraps past 360", needleRotation(300), 120);
+/* The cardinal text still names the source, not the drawn direction. */
+check("cardinal still reports the source", api.cardinal(90), "E");
+assert("arrow and cardinal deliberately disagree by 180",
+  needleRotation(90) === 270 && api.cardinal(90) === "E");
+
 for (const d of [0, 78, 359, null]) {
   const svg = api.compassSvg(120, d, 38);
   assert(

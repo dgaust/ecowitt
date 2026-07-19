@@ -13,6 +13,18 @@ card.
 | --- | --- |
 | `ecowitt-weather-card` | Station overview: temperature, feels-like, dew point, an inline wind compass, and a row of metric tiles you choose and order yourself |
 | `ecowitt-wind-card` | Two columns: a compass with a dashed average-direction marker on the left, and on the right the speed, a Beaufort description, and rows for direction, gust, daily maximum and average direction. The rows flow into two columns on wider cards |
+
+### Which way the wind arrow points
+
+Wind direction is reported as the bearing the wind blows **from** — a reading
+of 89° means an easterly. The compass arrow is drawn pointing the opposite
+way, downwind, showing where the air is heading, which is what the Ecowitt
+console shows. So an easterly draws an arrow pointing west.
+
+Both conventions are used in the wild, and the difference is only in the
+drawing: the degrees are the same either way. The rows say "from E 89°" so the
+reading is unambiguous whichever way you read the needle. The dashed marker
+for average direction follows the same convention.
 | `ecowitt-rain-card` | Rain rate, a live wet/dry indicator from the piezo sensor, and accumulation bars for the hour, today, 24 hours, the week and the current event |
 | `ecowitt-solar-card` | UV index against a banded exposure scale, plus irradiance and illuminance |
 | `ecowitt-soil-card` | One soil probe: moisture with a dry/ideal/saturated band, battery, signal and channel |

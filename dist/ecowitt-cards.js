@@ -14,7 +14,7 @@
  * hard-codes an entity id and extra probes work without a code change.
  */
 
-const CARD_VERSION = "1.14.1";
+const CARD_VERSION = "1.15.0";
 
 /* Plain text rather than a %c-styled banner: console styling can only take
  * literal colours, and nothing in this file should hardcode one. */
@@ -810,10 +810,18 @@ function compassSvg(size, dir, avgDir) {
       : `<text x="${dx}" y="${dy}" text-anchor="middle" dominant-baseline="middle"
            font-size="${size * 0.085}" fill="var(--secondary-text-color)">${t}</text>`;
 
+  /*
+   * Wind direction is reported as the bearing the wind comes FROM. The
+   * arrow is drawn pointing the other way — downwind, where the air is
+   * heading — which is what the Ecowitt console shows, so the two agree.
+   * The text says "from" so the reading is unambiguous either way.
+   */
+  const arrow = (deg) => (deg + 180) % 360;
+
   const needle =
     dir === null
       ? ""
-      : `<g transform="rotate(${dir} ${c} ${c})">
+      : `<g transform="rotate(${arrow(dir)} ${c} ${c})">
            <polygon points="${c},${c - r + 12} ${c - size * 0.055},${c + size * 0.07} ${c},${c + size * 0.035} ${c + size * 0.055},${c + size * 0.07}"
                     fill="var(--primary-color)"/>
          </g>`;
@@ -821,7 +829,7 @@ function compassSvg(size, dir, avgDir) {
   const ghost =
     avgDir === null || avgDir === undefined
       ? ""
-      : `<g transform="rotate(${avgDir} ${c} ${c})" opacity="0.35">
+      : `<g transform="rotate(${arrow(avgDir)} ${c} ${c})" opacity="0.35">
            <line x1="${c}" y1="${c}" x2="${c}" y2="${c - r + 14}"
                  stroke="var(--primary-text-color)" stroke-width="2"
                  stroke-dasharray="3 3" stroke-linecap="round"/>
@@ -905,7 +913,7 @@ class EcowittWeatherCard extends EcowittBase {
     const spd = this._ids.wind_speed;
     s.getElementById("windmini").innerHTML = `
       ${compassSvg(72, dir, num(h, this._ids.wind_dir_avg))}
-      <div class="lbl">${cardinal(dir)}${
+      <div class="lbl">${dir === null ? "—" : `from ${cardinal(dir)}`}${
         spd ? ` · ${fmt(h, spd, 1)} ${unit(h, spd)}` : ""
       }</div>`;
 
@@ -1019,7 +1027,7 @@ class EcowittWindCard extends EcowittBase {
      * under the speed carries the description instead of repeating it. */
     s.getElementById("desc").textContent = windLabel(num(h, spd));
 
-    const bearing = (deg) => `${cardinal(deg)} ${Math.round(deg)}°`;
+    const bearing = (deg) => `from ${cardinal(deg)} ${Math.round(deg)}°`;
     const rows = [];
     if (this._ids.wind_dir && dir !== null) {
       rows.push({ id: this._ids.wind_dir, label: "Direction", value: bearing(dir) });
