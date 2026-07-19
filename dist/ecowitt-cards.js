@@ -14,7 +14,7 @@
  * hard-codes an entity id and extra probes work without a code change.
  */
 
-const CARD_VERSION = "1.13.0";
+const CARD_VERSION = "1.14.0";
 
 /* Plain text rather than a %c-styled banner: console styling can only take
  * literal colours, and nothing in this file should hardcode one. */
@@ -1205,7 +1205,31 @@ class EcowittSolarCard extends EcowittBase {
     s.innerHTML = `
       <style>
         ${BASE_CSS}
-        .uvhead { display: flex; align-items: baseline; gap: var(--ha-space-2, 8px); }
+        /* Reading on the left, advice on the right. The reading column is
+         * sized to its content so the advice gets whatever is left, and the
+         * advice wraps rather than being clipped to one line. */
+        /* Number on the left; category and advice stacked to its right.
+         * Everything aligns to the top, so the category and the first line
+         * of advice share an edge instead of one sitting on the number's
+         * baseline while the other floats at the top. */
+        .uvhead {
+          display: grid;
+          grid-template-columns: auto minmax(0, 1fr);
+          gap: var(--ha-space-3, 12px);
+          align-items: start;
+        }
+        .uvtext {
+          display: flex; flex-direction: column;
+          gap: var(--ha-space-1, 4px);
+          min-width: 0;
+        }
+        .advice {
+          font-size: var(--ha-font-size-s, 12px);
+          color: var(--secondary-text-color);
+          line-height: var(--ha-line-height-normal, 1.6);
+          min-width: 0;
+          overflow-wrap: anywhere;
+        }
         .big {
           font-size: var(--ha-font-size-4xl, 32px);
           font-weight: var(--ha-font-weight-light, 300); line-height: 1;
@@ -1237,9 +1261,11 @@ class EcowittSolarCard extends EcowittBase {
         <div id="head"></div>
         <div class="uvhead">
           <div class="big" id="uv">—</div>
-          <div class="band" id="band"></div>
+          <div class="uvtext">
+            <div class="band" id="band"></div>
+            <div class="advice" id="advice"></div>
+          </div>
         </div>
-        <div class="sub" id="advice"></div>
         <div>
           <div class="scale" id="scale"><i id="marker" style="left:0%"></i></div>
           <div class="scaleticks" id="ticks"></div>
