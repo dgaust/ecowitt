@@ -161,6 +161,15 @@ The soil and solar cards draw a banded track: a coloured axis with a marker
 showing where the current reading falls. Both read their bands from config, so
 the thresholds are yours to set.
 
+The card editor has a **Scale** section listing the bands — threshold, label
+and colour per row, with *Add band*, a remove button, an axis maximum, and
+*Reset to default*. It opens pre-filled with the card's defaults, and the first
+edit writes the whole list into the config. Rows are kept in threshold order,
+sorted when a field loses focus rather than mid-keystroke, so a row never jumps
+out from under the cursor while you type.
+
+The same thing in YAML:
+
 ```yaml
 type: custom:ecowitt-soil-card
 device: <a soil probe>

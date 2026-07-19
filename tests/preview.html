@@ -90,6 +90,13 @@
     <div id="editorpreview"></div>
   </div>
 
+  <h1 style="margin-top:32px">Soil card editor — scale (live)</h1>
+  <div class="wrap" id="scalewrap">
+    <div id="scalehost" style="background:var(--card-background-color);
+         border-radius:12px;padding:16px;box-shadow:0 1px 3px rgba(0,0,0,.12)"></div>
+    <div id="scalepreview"></div>
+  </div>
+
   <script>
     /* Stand-ins for the two HA elements the cards rely on. */
     customElements.define("ha-card", class extends HTMLElement {
@@ -236,6 +243,27 @@
       mount();
       window.__editor = editor;
       window.__editorConfig = editorConfig;
+
+      /* Same again for the soil card's scale editor. */
+      let scaleConfig = { type: "custom:ecowitt-soil-card", device: soilCh2 };
+      const scaleEditor = document.createElement("ecowitt-scale-card-editor");
+      const scalePreview = document.createElement("ecowitt-soil-card");
+      const mountScale = () => {
+        scalePreview.setConfig(scaleConfig);
+        scalePreview.hass = hass;
+      };
+      scaleEditor.hass = hass;
+      scaleEditor.setConfig(scaleConfig);
+      scaleEditor.addEventListener("config-changed", (ev) => {
+        scaleConfig = ev.detail.config;
+        window.__scaleConfig = scaleConfig;
+        mountScale();
+      });
+      document.getElementById("scalehost").appendChild(scaleEditor);
+      document.getElementById("scalepreview").appendChild(scalePreview);
+      mountScale();
+      window.__scaleEditor = scaleEditor;
+      window.__scaleConfig = scaleConfig;
 
       document.getElementById("theme").onclick = () =>
         document.body.classList.toggle("dark");

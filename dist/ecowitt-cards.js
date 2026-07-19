@@ -14,7 +14,7 @@
  * hard-codes an entity id and extra probes work without a code change.
  */
 
-const CARD_VERSION = "1.11.0";
+const CARD_VERSION = "1.12.0";
 
 /* Plain text rather than a %c-styled banner: console styling can only take
  * literal colours, and nothing in this file should hardcode one. */
@@ -1253,7 +1253,7 @@ class EcowittSolarCard extends EcowittBase {
     return { type: "custom:ecowitt-solar-card", device: "" };
   }
   static getConfigElement() {
-    return document.createElement("ecowitt-card-editor");
+    return document.createElement("ecowitt-scale-card-editor");
   }
 }
 
@@ -1348,7 +1348,7 @@ class EcowittSoilCard extends EcowittBase {
     return { type: "custom:ecowitt-soil-card", device: "" };
   }
   static getConfigElement() {
-    return document.createElement("ecowitt-card-editor");
+    return document.createElement("ecowitt-scale-card-editor");
   }
 }
 
@@ -1474,6 +1474,196 @@ class EcowittCardEditor extends HTMLElement {
 }
 
 /* ------------------------------------------------------------------ *
+ * Scale editor — soil and solar band thresholds
+ *
+ * Bands are kept sorted by threshold, so unlike the metric list there is
+ * nothing to drag: the numbers decide the order. Sorting happens on blur
+ * rather than on every keystroke, otherwise a row would jump out from
+ * under the cursor mid-edit.
+ * ------------------------------------------------------------------ */
+
+class EcowittScaleCardEditor extends EcowittCardEditor {
+  _defaultScale() {
+    const type = (this._config && this._config.type) || "";
+    return type.includes("solar") ? DEFAULT_UV_SCALE : DEFAULT_SOIL_SCALE;
+  }
+
+  /* Editing shape: every band carries a `to` except the last, which runs
+   * to the top of the axis. */
+  _scale() {
+    return parseScale(this._config, this._defaultScale());
+  }
+
+  _writeScale(bands, max, rerender = true) {
+    const fallback = this._defaultScale();
+    const clean = bands.map((b, i) => {
+      const last = i === bands.length - 1;
+      const out = { label: b.label, color: b.color };
+      if (!last && Number.isFinite(b.to)) out.to = b.to;
+      return out;
+    });
+    const config = { ...this._config, scale: { max, bands: clean } };
+    /* Keep it terse when the axis is the card's own default. */
+    if (max === fallback.max) config.scale = clean;
+    this._emit(config);
+    if (rerender) this._renderScale();
+    else this._scaleSig = this._scaleSignature();
+  }
+
+  _scaleSignature() {
+    const s = this._scale();
+    return JSON.stringify([s.max, s.bands.length, (this._config || {}).type]);
+  }
+
+  _render() {
+    super._render();
+    if (!this._hass || !this._config) return;
+
+    if (!this._scaleSection) {
+      if (!this._styled) {
+        const style = document.createElement("style");
+        style.textContent = EDITOR_CSS;
+        this.appendChild(style);
+        this._styled = true;
+      }
+      this._scaleSection = document.createElement("div");
+      this._scaleSection.className = "ecw-section";
+      this._scaleSection.innerHTML = `
+        <div class="ecw-h">Scale</div>
+        <div class="ecw-hint">
+          Bands run from the previous threshold up to their own. The last runs
+          to the top of the axis.
+        </div>
+        <div class="ecw-list"></div>
+        <div class="ecw-max">
+          Axis maximum <input type="number" step="any" id="ecw-scale-max">
+        </div>
+        <div class="ecw-actions"></div>`;
+      this.appendChild(this._scaleSection);
+    }
+
+    if (this._scaleSignature() !== this._scaleSig) this._renderScale();
+  }
+
+  _renderScale() {
+    this._scaleSig = this._scaleSignature();
+    const scale = this._scale();
+    const isDefault = !(this._config && this._config.scale);
+    const list = this._scaleSection.querySelector(".ecw-list");
+    const actions = this._scaleSection.querySelector(".ecw-actions");
+    list.textContent = "";
+    actions.textContent = "";
+
+    const maxInput = this._scaleSection.querySelector("#ecw-scale-max");
+    maxInput.value = scale.max;
+    maxInput.onchange = () => {
+      const v = parseFloat(maxInput.value);
+      this._writeScale(scale.bands, Number.isFinite(v) && v > 0 ? v : scale.max);
+    };
+
+    scale.bands.forEach((band, i) => {
+      const last = i === scale.bands.length - 1;
+      const row = document.createElement("div");
+      row.className = "ecw-band";
+
+      const to = document.createElement("input");
+      if (last) {
+        /* The open band has no threshold to edit — say so rather than
+         * showing an empty box that looks broken. */
+        const span = document.createElement("span");
+        span.className = "ecw-top";
+        span.textContent = `to ${scale.max}`;
+        row.appendChild(span);
+      } else {
+        to.type = "number";
+        to.step = "any";
+        to.value = band.to;
+        to.title = "Upper threshold, exclusive";
+        to.addEventListener("input", () => {
+          const bands = this._scale().bands.slice();
+          bands[i] = { ...bands[i], to: parseFloat(to.value) };
+          this._writeScale(bands, scale.max, false);
+        });
+        /* Re-sort once editing settles, not on every keystroke. */
+        to.addEventListener("blur", () => this._renderScale());
+        row.appendChild(to);
+      }
+
+      const label = document.createElement("input");
+      label.type = "text";
+      label.value = band.label;
+      label.placeholder = "Label";
+      label.addEventListener("input", () => {
+        const bands = this._scale().bands.slice();
+        bands[i] = { ...bands[i], label: label.value };
+        this._writeScale(bands, scale.max, false);
+      });
+      label.addEventListener("blur", () => this._renderScale());
+
+      const colWrap = document.createElement("div");
+      colWrap.className = "ecw-colwrap";
+      const swatch = document.createElement("span");
+      swatch.className = "ecw-swatch";
+      swatch.style.background = scaleColor(band.color);
+      const color = document.createElement("select");
+      Object.keys(SCALE_COLORS).forEach((name) => {
+        const opt = document.createElement("option");
+        opt.value = name;
+        opt.textContent = name;
+        if (name === band.color) opt.selected = true;
+        color.appendChild(opt);
+      });
+      color.addEventListener("change", () => {
+        const bands = this._scale().bands.slice();
+        bands[i] = { ...bands[i], color: color.value };
+        this._writeScale(bands, scale.max);
+      });
+      colWrap.append(swatch, color);
+
+      const remove = document.createElement("button");
+      remove.className = "ecw-btn";
+      remove.title = "Remove band";
+      remove.disabled = scale.bands.length <= 1;
+      remove.innerHTML = `<ha-icon icon="mdi:close"></ha-icon>`;
+      remove.addEventListener("click", () => {
+        const bands = this._scale().bands.filter((_, j) => j !== i);
+        this._writeScale(bands, scale.max);
+      });
+
+      row.append(label, colWrap, remove);
+      list.appendChild(row);
+    });
+
+    const add = document.createElement("button");
+    add.className = "ecw-text";
+    add.textContent = "Add band";
+    add.addEventListener("click", () => {
+      const bands = this._scale().bands.slice();
+      /* Insert below the open band, halfway between its neighbours. */
+      const prev = bands.length >= 2 ? bands[bands.length - 2].to : 0;
+      const midpoint = Math.round(((prev || 0) + scale.max) / 2);
+      bands.splice(bands.length - 1, 0, {
+        to: midpoint, label: "New band", color: "info",
+      });
+      this._writeScale(bands, scale.max);
+    });
+    actions.appendChild(add);
+
+    const reset = document.createElement("button");
+    reset.className = "ecw-text";
+    reset.textContent = "Reset to default";
+    reset.disabled = isDefault;
+    reset.addEventListener("click", () => {
+      const config = { ...this._config };
+      delete config.scale;
+      this._emit(config);
+      this._renderScale();
+    });
+    actions.appendChild(reset);
+  }
+}
+
+/* ------------------------------------------------------------------ *
  * Weather card editor — metric tiles
  *
  * Modelled on the tile card's "features" editor: the chosen entries are a
@@ -1560,6 +1750,65 @@ const EDITOR_CSS = `
     color: var(--secondary-text-color);
     padding: var(--ha-space-2, 8px) 0;
   }
+  /* Band editor: threshold, label, colour, remove. */
+  .ecw-band {
+    display: grid;
+    grid-template-columns: 5.5em minmax(0, 1fr) 7.5em auto;
+    align-items: center;
+    gap: var(--ha-space-2, 8px);
+    padding: var(--ha-space-1, 4px) var(--ha-space-2, 8px);
+    background: var(--secondary-background-color);
+    border-radius: var(--ha-border-radius-md, 8px);
+  }
+  .ecw-band input, .ecw-band select {
+    background: none; border: none; color: var(--primary-text-color);
+    font: inherit; font-size: var(--ha-font-size-m, 14px);
+    min-width: 0; padding: var(--ha-space-1, 4px) 0;
+    border-bottom: 1px solid transparent;
+  }
+  .ecw-band input:hover, .ecw-band select:hover { border-bottom-color: var(--divider-color); }
+  .ecw-band input:focus, .ecw-band select:focus {
+    outline: none; border-bottom-color: var(--primary-color);
+  }
+  .ecw-band select { cursor: pointer; }
+  .ecw-band option { background: var(--card-background-color); color: var(--primary-text-color); }
+  .ecw-band .ecw-top {
+    font-size: var(--ha-font-size-s, 12px);
+    color: var(--secondary-text-color);
+    font-variant-numeric: tabular-nums;
+  }
+  .ecw-swatch {
+    display: inline-block; width: 10px; height: 10px;
+    border-radius: var(--ha-border-radius-circle, 50%);
+    margin-right: var(--ha-space-1, 4px); flex: 0 0 auto;
+  }
+  .ecw-colwrap { display: flex; align-items: center; min-width: 0; }
+  .ecw-actions {
+    display: flex; align-items: center; gap: var(--ha-space-2, 8px);
+    margin-top: var(--ha-space-2, 8px);
+  }
+  .ecw-text {
+    background: none; border: 1px solid var(--divider-color);
+    border-radius: var(--ha-border-radius-pill, 9999px);
+    padding: var(--ha-space-1, 4px) var(--ha-space-2, 8px);
+    color: var(--primary-text-color); cursor: pointer;
+    font-size: var(--ha-font-size-s, 12px);
+  }
+  .ecw-text:hover { border-color: var(--primary-color); }
+  .ecw-max {
+    display: flex; align-items: center; gap: var(--ha-space-2, 8px);
+    margin-top: var(--ha-space-2, 8px);
+    font-size: var(--ha-font-size-s, 12px);
+    color: var(--secondary-text-color);
+  }
+  .ecw-max input {
+    width: 5em; background: none; border: none; font: inherit;
+    font-size: var(--ha-font-size-m, 14px);
+    color: var(--primary-text-color);
+    border-bottom: 1px solid var(--divider-color);
+    padding: var(--ha-space-1, 4px) 0;
+  }
+  .ecw-max input:focus { outline: none; border-bottom-color: var(--primary-color); }
   .ecw-btn ha-icon, .ecw-chip ha-icon, .ecw-grip { --mdc-icon-size: 18px; }
 `;
 
@@ -1795,6 +2044,9 @@ if (!customElements.get("ecowitt-card-editor")) {
 }
 if (!customElements.get("ecowitt-weather-card-editor")) {
   customElements.define("ecowitt-weather-card-editor", EcowittWeatherCardEditor);
+}
+if (!customElements.get("ecowitt-scale-card-editor")) {
+  customElements.define("ecowitt-scale-card-editor", EcowittScaleCardEditor);
 }
 
 window.customCards = window.customCards || [];
