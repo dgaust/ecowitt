@@ -14,7 +14,7 @@
  * hard-codes an entity id and extra probes work without a code change.
  */
 
-const CARD_VERSION = "1.12.0";
+const CARD_VERSION = "1.13.0";
 
 /* Plain text rather than a %c-styled banner: console styling can only take
  * literal colours, and nothing in this file should hardcode one. */
@@ -215,14 +215,39 @@ function scaleColor(name) {
   return SCALE_COLORS[name] || String(name);
 }
 
+/*
+ * The Bureau of Meteorology's categories: Low 0–2, Moderate 3–5, High 6–7,
+ * Very high 8–10, Extreme 11+. Expressed as exclusive upper bounds, those
+ * are the thresholds below.
+ *
+ * The dividing line that matters is 3: BoM issues sun protection times, and
+ * ARPANSA and Cancer Council recommend protection, whenever the index
+ * reaches 3 or above. The descriptions say so rather than leaving a colour
+ * to imply it.
+ */
 const DEFAULT_UV_SCALE = {
   max: 12,
   bands: [
-    { to: 3, label: "Low", color: "success" },
-    { to: 6, label: "Moderate", color: "warning" },
-    { to: 8, label: "High", color: "warning" },
-    { to: 11, label: "Very high", color: "error" },
-    { label: "Extreme", color: "error" },
+    {
+      to: 3, label: "Low", color: "success",
+      description: "Sun protection not generally required.",
+    },
+    {
+      to: 6, label: "Moderate", color: "warning",
+      description: "Sun protection required — slip, slop, slap, seek, slide.",
+    },
+    {
+      to: 8, label: "High", color: "warning",
+      description: "Sun protection required — slip, slop, slap, seek, slide.",
+    },
+    {
+      to: 11, label: "Very high", color: "error",
+      description: "Sun protection required. Take extra care and seek shade around midday.",
+    },
+    {
+      label: "Extreme", color: "error",
+      description: "Sun protection required. Minimise time outdoors around midday.",
+    },
   ],
 };
 
@@ -258,6 +283,7 @@ function parseScale(config, fallback) {
       to: Number.isFinite(b.to) ? b.to : null,
       label: String(b.label),
       color: b.color,
+      description: typeof b.description === "string" ? b.description : "",
     }))
     /* Open-ended band sorts last whatever order it was written in. */
     .sort((a, b) => (a.to === null ? Infinity : a.to) - (b.to === null ? Infinity : b.to));
@@ -266,14 +292,18 @@ function parseScale(config, fallback) {
 }
 
 function bandFor(value, scale) {
-  if (value === null) return { label: "—", color: "var(--disabled-color)" };
-  for (const b of scale.bands) {
-    if (b.to === null || value < b.to) {
-      return { label: b.label, color: scaleColor(b.color) };
-    }
+  const shape = (b) => ({
+    label: b.label,
+    color: scaleColor(b.color),
+    description: b.description || "",
+  });
+  if (value === null) {
+    return { label: "—", color: "var(--disabled-color)", description: "" };
   }
-  const last = scale.bands[scale.bands.length - 1];
-  return { label: last.label, color: scaleColor(last.color) };
+  for (const b of scale.bands) {
+    if (b.to === null || value < b.to) return shape(b);
+  }
+  return shape(scale.bands[scale.bands.length - 1]);
 }
 
 /* Hard stops rather than a blend, so a boundary reads as a boundary. */
@@ -1209,6 +1239,7 @@ class EcowittSolarCard extends EcowittBase {
           <div class="big" id="uv">—</div>
           <div class="band" id="band"></div>
         </div>
+        <div class="sub" id="advice"></div>
         <div>
           <div class="scale" id="scale"><i id="marker" style="left:0%"></i></div>
           <div class="scaleticks" id="ticks"></div>
@@ -1231,6 +1262,12 @@ class EcowittSolarCard extends EcowittBase {
     const bandEl = s.getElementById("band");
     bandEl.textContent = band.label;
     bandEl.style.color = band.color;
+
+    /* The advice line is the point of the band, not decoration: at UV 3 and
+     * above the guidance is to cover up, and a colour alone doesn't say it. */
+    const advice = s.getElementById("advice");
+    advice.textContent = band.description;
+    advice.style.display = band.description ? "" : "none";
 
     /* Repaint the axis only when the scale changes, not every tick. */
     const track = s.getElementById("scale");
@@ -1307,6 +1344,7 @@ class EcowittSoilCard extends EcowittBase {
           <div class="big" id="moist">—</div>
           <div class="band" id="band"></div>
         </div>
+        <div class="sub" id="advice"></div>
         <div>
           <div class="track" id="track"><i id="marker" style="left:0%"></i></div>
           <div class="zones" id="zones"></div>
@@ -1330,6 +1368,11 @@ class EcowittSoilCard extends EcowittBase {
     const bandEl = s.getElementById("band");
     bandEl.textContent = band.label;
     bandEl.style.color = band.color;
+
+    /* No soil defaults carry advice, so this stays hidden unless configured. */
+    const advice = s.getElementById("advice");
+    advice.textContent = band.description;
+    advice.style.display = band.description ? "" : "none";
 
     const track = s.getElementById("track");
     const sig = JSON.stringify(scale);
@@ -1499,6 +1542,7 @@ class EcowittScaleCardEditor extends EcowittCardEditor {
     const clean = bands.map((b, i) => {
       const last = i === bands.length - 1;
       const out = { label: b.label, color: b.color };
+      if (b.description) out.description = b.description;
       if (!last && Number.isFinite(b.to)) out.to = b.to;
       return out;
     });
@@ -1630,7 +1674,20 @@ class EcowittScaleCardEditor extends EcowittCardEditor {
         this._writeScale(bands, scale.max);
       });
 
-      row.append(label, colWrap, remove);
+      /* Second line, spanning the row: the advice shown under the reading. */
+      const desc = document.createElement("input");
+      desc.type = "text";
+      desc.className = "ecw-desc";
+      desc.value = band.description || "";
+      desc.placeholder = "Description (optional)";
+      desc.addEventListener("input", () => {
+        const bands = this._scale().bands.slice();
+        bands[i] = { ...bands[i], description: desc.value };
+        this._writeScale(bands, scale.max, false);
+      });
+      desc.addEventListener("blur", () => this._renderScale());
+
+      row.append(label, colWrap, remove, desc);
       list.appendChild(row);
     });
 
@@ -1772,6 +1829,11 @@ const EDITOR_CSS = `
   }
   .ecw-band select { cursor: pointer; }
   .ecw-band option { background: var(--card-background-color); color: var(--primary-text-color); }
+  .ecw-band .ecw-desc {
+    grid-column: 1 / -1;
+    font-size: var(--ha-font-size-s, 12px);
+    color: var(--secondary-text-color);
+  }
   .ecw-band .ecw-top {
     font-size: var(--ha-font-size-s, 12px);
     color: var(--secondary-text-color);

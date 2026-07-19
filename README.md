@@ -211,10 +211,30 @@ scale:
 A malformed `scale` falls back to the card's default rather than rendering a
 broken axis.
 
-### A caveat on the soil defaults
+A band may also carry a `description`, shown as a line of advice under the
+reading:
 
-The **UV defaults follow the WHO exposure categories**. The **soil defaults
-follow nothing** — they are round numbers centred on 50%, not research.
+```yaml
+scale:
+  - to: 3
+    label: Low
+    color: success
+    description: Sun protection not generally required.
+```
+
+The UV card ships with these filled in; the soil card leaves them empty, so
+the line is hidden until you add one.
+
+### Where the defaults come from
+
+The **UV defaults follow the Bureau of Meteorology's categories** — Low 0–2,
+Moderate 3–5, High 6–7, Very high 8–10, Extreme 11+ — and the advice reflects
+that BoM issues sun protection times, and ARPANSA and Cancer Council recommend
+protection, whenever the index reaches **3 or above**. You shouldn't need to
+touch them, but they are overridable like any other scale.
+
+The **soil defaults follow nothing** — they are round numbers centred on 50%,
+not research.
 
 Two reasons to set your own. A capacitive probe like the WH51 reports a
 relative index between its dry and wet calibration points, not volumetric water

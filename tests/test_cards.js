@@ -332,6 +332,44 @@ assert("a single open band still renders",
   !scaleGradient(parseScale({ scale: [{ label: "All", color: "info" }] },
     DEFAULT_SOIL_SCALE)).includes("NaN"));
 
+/* ---- UV defaults against the Bureau of Meteorology ---- */
+console.log("uv categories");
+const uvScale = parseScale({}, DEFAULT_UV_SCALE);
+const uvLabel = (v) => bandFor(v, uvScale).label;
+
+/* BoM: Low 0-2, Moderate 3-5, High 6-7, Very high 8-10, Extreme 11+. Check
+ * every boundary from both sides, since an off-by-one here would misreport
+ * whether sun protection is advised. */
+[[0, "Low"], [1, "Low"], [2, "Low"],
+ [3, "Moderate"], [4, "Moderate"], [5, "Moderate"],
+ [6, "High"], [7, "High"],
+ [8, "Very high"], [9, "Very high"], [10, "Very high"],
+ [11, "Extreme"], [12, "Extreme"], [15, "Extreme"]]
+  .forEach(([v, want]) => check(`uv ${v}`, uvLabel(v), want));
+
+/* The 3 boundary is the one that carries public-health meaning. */
+check("2.9 is still Low", uvLabel(2.9), "Low");
+check("3.0 is Moderate", uvLabel(3), "Moderate");
+assert("protection is not advised below 3",
+  !/protection required/i.test(bandFor(2, uvScale).description));
+assert("protection is advised from 3 up",
+  [3, 6, 8, 11].every((v) => /protection required/i.test(bandFor(v, uvScale).description)));
+assert("every UV band has advice",
+  uvScale.bands.every((b) => b.description && b.description.length > 10));
+
+/* Descriptions survive parsing, are optional, and are overridable. */
+check("description is carried through",
+  bandFor(7, uvScale).description.startsWith("Sun protection required"), true);
+check("soil defaults carry none",
+  bandFor(50, parseScale({}, DEFAULT_SOIL_SCALE)).description, "");
+check("a custom description is honoured",
+  bandFor(50, parseScale({ scale: [{ label: "Fine", color: "info", description: "All good" }] },
+    DEFAULT_SOIL_SCALE)).description, "All good");
+check("a non-string description is dropped",
+  bandFor(50, parseScale({ scale: [{ label: "X", color: "info", description: 7 }] },
+    DEFAULT_SOIL_SCALE)).description, "");
+check("null value has no description", bandFor(null, uvScale).description, "");
+
 /* ---- helpers ---- */
 console.log("helpers");
 check("cardinal(0)", api.cardinal(0), "N");
