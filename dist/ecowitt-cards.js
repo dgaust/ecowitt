@@ -14,7 +14,7 @@
  * hard-codes an entity id and extra probes work without a code change.
  */
 
-const CARD_VERSION = "1.14.0";
+const CARD_VERSION = "1.14.1";
 
 /* Plain text rather than a %c-styled banner: console styling can only take
  * literal colours, and nothing in this file should hardcode one. */
@@ -1218,9 +1218,11 @@ class EcowittSolarCard extends EcowittBase {
           gap: var(--ha-space-3, 12px);
           align-items: start;
         }
+        /* No gap here: the advice's line-height already leaves leading above
+         * its first line, so a flex gap on top of that reads as a break
+         * between the category and its own explanation. */
         .uvtext {
           display: flex; flex-direction: column;
-          gap: var(--ha-space-1, 4px);
           min-width: 0;
         }
         .advice {
@@ -1235,7 +1237,11 @@ class EcowittSolarCard extends EcowittBase {
           font-weight: var(--ha-font-weight-light, 300); line-height: 1;
           color: var(--primary-text-color); font-variant-numeric: tabular-nums;
         }
-        .band { font-size: var(--ha-font-size-m, 14px); font-weight: var(--ha-font-weight-medium, 500); }
+        .band {
+          font-size: var(--ha-font-size-m, 14px);
+          font-weight: var(--ha-font-weight-medium, 500);
+          line-height: var(--ha-line-height-condensed, 1.2);
+        }
         /* Gradient and ticks are generated from the configured scale. */
         .scale {
           position: relative; height: 6px;
