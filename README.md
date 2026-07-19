@@ -53,6 +53,11 @@ dropdown.
 | `ecowitt-soil-card` | One soil probe: moisture with a dry/ideal/saturated band, battery, signal and channel |
 | `ecowitt-indoor-card` | Gateway indoor temperature and humidity with relative and absolute pressure |
 
+Numbers are punctuated using your Home Assistant number format, so an
+illuminance of 74300 reads as `74,300 lx` — or `74.300 lx`, `74 300 lx`, or
+`74300 lx` if that is what you have set under Profile → Number format. Decimal
+places still come from each entity's display precision.
+
 Every value opens Home Assistant's own more-info dialog on tap, so history is
 one click away. That includes the large hero readings — the temperature, wind
 speed, rain rate, UV index and soil moisture — and the smaller lines beside

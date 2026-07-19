@@ -14,7 +14,7 @@
  * hard-codes an entity id and extra probes work without a code change.
  */
 
-const CARD_VERSION = "1.18.1";
+const CARD_VERSION = "1.19.0";
 
 /* Plain text rather than a %c-styled banner: console styling can only take
  * literal colours, and nothing in this file should hardcode one. */
@@ -139,15 +139,53 @@ function unit(hass, entityId) {
   return (st && st.attributes.unit_of_measurement) || "";
 }
 
+/*
+ * Home Assistant lets the user choose how numbers are punctuated, and it is
+ * not always derivable from the language: someone may run an English UI and
+ * still want 1.234,5. `none` is a real choice too — it means no grouping at
+ * all — so it is distinct from "not set", which follows the language.
+ */
+const NUMBER_FORMAT_LOCALES = {
+  comma_decimal: "en-US",   // 1,234.5
+  decimal_comma: "de-DE",   // 1.234,5
+  space_comma: "fr-FR",     // 1 234,5
+};
+
+function numberLocale(hass) {
+  const locale = (hass && hass.locale) || {};
+  const pref = locale.number_format;
+  if (pref === "none") return null;                    // group nothing
+  if (NUMBER_FORMAT_LOCALES[pref]) return NUMBER_FORMAT_LOCALES[pref];
+  if (pref === "language" && locale.language) return locale.language;
+  /* "system", unset, or anything unrecognised: the browser's own default,
+   * which is what undefined means to toLocaleString. */
+  return locale.language || undefined;
+}
+
 /* Format with the entity's own display precision when HA supplies one,
- * otherwise fall back to a sensible fixed number of decimals. */
+ * otherwise fall back to a sensible fixed number of decimals. Grouping
+ * separators follow the user's Home Assistant number format, so 74300
+ * reads as 74,300. */
 function fmt(hass, entityId, fallbackDigits = 1) {
   const st = hass && entityId ? hass.states[entityId] : null;
   if (isBad(st)) return "—";
   const v = parseFloat(st.state);
   if (!Number.isFinite(v)) return st.state;
+
   const p = st.attributes.suggested_display_precision;
-  return v.toFixed(Number.isInteger(p) ? p : fallbackDigits);
+  const digits = Number.isInteger(p) ? p : fallbackDigits;
+
+  const loc = numberLocale(hass);
+  if (loc === null) return v.toFixed(digits);
+  try {
+    return v.toLocaleString(loc, {
+      minimumFractionDigits: digits,
+      maximumFractionDigits: digits,
+    });
+  } catch (err) {
+    /* A malformed language tag from the profile shouldn't blank a reading. */
+    return v.toFixed(digits);
+  }
 }
 
 function deviceName(hass, deviceId) {

@@ -40,6 +40,7 @@ vm.runInContext(
     "\nglobalThis.__api = { discover, cardinal, windLabel," +
     " compassSvg, fmt, num, metricEntries, metricEntryFor, METRIC_CATALOGUE," +
     " DEFAULT_METRICS, withHubMetrics, parseScale, bandFor, scaleColor," +
+    " numberLocale," +
     " scaleGradient, scaleTicks, DEFAULT_SOIL_SCALE, DEFAULT_UV_SCALE," +
     " NEEDLE_STYLES, DEFAULT_NEEDLE };",
   ctx
@@ -153,14 +154,52 @@ check(
   api.fmt({ states: { "sensor.x": { state: "D431A", attributes: {} } } }, "sensor.x"),
   "D431A"
 );
+const stateOf = (value, attrs, locale) => ({
+  states: { "sensor.x": { state: String(value), attributes: attrs || {} } },
+  ...(locale ? { locale } : {}),
+});
 check(
   "display precision honoured",
-  api.fmt(
-    { states: { "sensor.x": { state: "1029.23", attributes: { suggested_display_precision: 0 } } } },
-    "sensor.x"
-  ),
-  "1029"
+  api.fmt(stateOf("1029.23", { suggested_display_precision: 0 }), "sensor.x"),
+  "1,029"
 );
+
+/* ---- number formatting ---- */
+console.log("number format");
+/* Grouping follows the user's Home Assistant setting, which is not always
+ * implied by the language: an English UI may still want 1.234,5. */
+check("grouped by default", api.fmt(stateOf("74300", { suggested_display_precision: 0 }), "sensor.x"), "74,300");
+check("comma_decimal",
+  api.fmt(stateOf("74300", { suggested_display_precision: 1 }, { number_format: "comma_decimal" }), "sensor.x"),
+  "74,300.0");
+check("decimal_comma",
+  api.fmt(stateOf("74300", { suggested_display_precision: 1 }, { number_format: "decimal_comma" }), "sensor.x"),
+  "74.300,0");
+/* "none" is a deliberate choice meaning no separators at all, so it must
+ * not be treated the same as "unset". */
+check("none groups nothing",
+  api.fmt(stateOf("74300", { suggested_display_precision: 1 }, { number_format: "none" }), "sensor.x"),
+  "74300.0");
+check("language follows the profile language",
+  api.fmt(stateOf("74300", { suggested_display_precision: 0 }, { number_format: "language", language: "de" }), "sensor.x"),
+  "74.300");
+check("small numbers are untouched",
+  api.fmt(stateOf("18.4", { suggested_display_precision: 1 }), "sensor.x"), "18.4");
+check("precision still applies", api.fmt(stateOf("0.4372", {}), "sensor.x", 2), "0.44");
+/* A malformed language tag from the profile must not blank a reading. */
+check("bad locale falls back rather than throwing",
+  api.fmt(stateOf("1234.5", { suggested_display_precision: 1 }, { number_format: "language", language: "not a locale" }), "sensor.x"),
+  "1234.5");
+check("unavailable is still a dash",
+  api.fmt(stateOf("unavailable", {}), "sensor.x"), "—");
+check("non-numeric still passes through",
+  api.fmt(stateOf("D431A", {}), "sensor.x"), "D431A");
+
+check("locale resolution: none", api.numberLocale({ locale: { number_format: "none" } }), null);
+check("locale resolution: unset uses language",
+  api.numberLocale({ locale: { language: "en-GB" } }), "en-GB");
+check("locale resolution: no locale object at all",
+  api.numberLocale({}), undefined);
 
 /* ---- configurable metric tiles ---- */
 console.log("metrics");
