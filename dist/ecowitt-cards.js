@@ -14,7 +14,7 @@
  * hard-codes an entity id and extra probes work without a code change.
  */
 
-const CARD_VERSION = "1.20.0";
+const CARD_VERSION = "1.21.0";
 
 /* Plain text rather than a %c-styled banner: console styling can only take
  * literal colours, and nothing in this file should hardcode one. */
@@ -467,13 +467,29 @@ function metricEntries(config) {
 
   return list
     .map((item) => {
-      const key = typeof item === "string" ? item : item && item.metric;
+      const obj = item && typeof item === "object" ? item : null;
+      const name = obj && typeof obj.name === "string" && obj.name.trim()
+        ? obj.name.trim()
+        : null;
+
+      /* A custom tile names an entity outright. Its label, icon and
+       * precision come from the entity itself at render time, since that
+       * needs hass; null here means "ask the entity".
+       *
+       * An empty entity is kept, not dropped: that is the state of a tile
+       * just added in the editor, before one has been picked. The card
+       * renders nothing for it, but the editor needs the row to exist so
+       * there is somewhere to make the choice. */
+      if (obj && typeof obj.entity === "string") {
+        return { custom: true, entity: obj.entity, label: name, icon: null, digits: null };
+      }
+
+      const key = typeof item === "string" ? item : obj && obj.metric;
       const meta = METRIC_CATALOGUE[key];
       if (!meta) return null;
-      const name = item && typeof item === "object" ? item.name : null;
       return {
         key,
-        label: (typeof name === "string" && name.trim()) || meta.label,
+        label: name || meta.label,
         icon: meta.icon,
         digits: meta.digits,
         suffixUnit: !meta.noUnit,
@@ -481,6 +497,28 @@ function metricEntries(config) {
     })
     .filter(Boolean);
 }
+
+/* Icons for custom tiles whose entity carries no icon of its own. */
+const CLASS_ICONS = {
+  temperature: "mdi:thermometer",
+  humidity: "mdi:water-percent",
+  pressure: "mdi:gauge",
+  atmospheric_pressure: "mdi:gauge",
+  battery: "mdi:battery",
+  voltage: "mdi:flash",
+  current: "mdi:current-ac",
+  power: "mdi:flash",
+  energy: "mdi:lightning-bolt",
+  illuminance: "mdi:white-balance-sunny",
+  irradiance: "mdi:solar-power-variant",
+  precipitation: "mdi:weather-pouring",
+  precipitation_intensity: "mdi:speedometer",
+  wind_speed: "mdi:weather-windy",
+  moisture: "mdi:watering-can",
+  carbon_dioxide: "mdi:molecule-co2",
+  pm25: "mdi:blur",
+  signal_strength: "mdi:signal",
+};
 
 /* Store a bare key unless the name actually differs from the default, so
  * YAML stays terse and a renamed default doesn't get pinned by accident. */
@@ -490,6 +528,13 @@ function metricEntryFor(key, name) {
   return trimmed && meta && trimmed !== meta.label
     ? { metric: key, name: trimmed }
     : key;
+}
+
+/* A custom tile always stores an object; the name is optional and absent
+ * means "use whatever the entity calls itself". */
+function customEntryFor(entity, name) {
+  const trimmed = typeof name === "string" ? name.trim() : "";
+  return trimmed ? { entity, name: trimmed } : { entity };
 }
 
 /* ------------------------------------------------------------------ *
@@ -714,9 +759,28 @@ class EcowittBase extends HTMLElement {
 
   /* A metric tile. Returns "" when the entity is absent so callers can
    * concatenate freely and missing hardware just disappears. */
-  _cell(key, label, icon, digits = 1, suffixUnit = true) {
-    const id = this._ids[key];
-    if (!id) return "";
+  /*
+   * Resolve a spec to what actually gets drawn. A catalogue tile carries
+   * its own label, icon and precision; a custom tile names only an entity,
+   * so those come from the entity itself.
+   */
+  _resolveSpec(spec) {
+    const id = spec.entity || this._ids[spec.key];
+    const st = id ? this._hass.states[id] : null;
+    if (!st) return null;
+
+    const attrs = st.attributes || {};
+    return {
+      id,
+      label: spec.label || attrs.friendly_name || id,
+      icon: spec.icon || attrs.icon || CLASS_ICONS[attrs.device_class] || "mdi:gauge",
+      digits: Number.isInteger(spec.digits) ? spec.digits : 1,
+      suffixUnit: spec.suffixUnit !== false,
+    };
+  }
+
+  _cell(spec) {
+    const { id, label, icon, digits, suffixUnit } = spec;
     const u = suffixUnit ? unit(this._hass, id) : "";
     return `
       <div class="cell clickable" data-entity="${id}"
@@ -736,15 +800,14 @@ class EcowittBase extends HTMLElement {
    * order), and otherwise patch the values of the existing nodes.
    */
   _syncGrid(container, specs) {
-    const live = specs.filter((s) => this._ids[s.key]);
-    /* The label is part of the structure: renaming a tile has to repaint it. */
-    const sig = live.map((s) => `${s.key}:${this._ids[s.key]}:${s.label}`).join("|");
+    const live = specs.map((s) => this._resolveSpec(s)).filter(Boolean);
+    /* Label and icon are part of the structure: renaming a tile, or an
+     * entity changing its own name, has to repaint it. */
+    const sig = live.map((s) => `${s.id}:${s.label}:${s.icon}`).join("|");
 
     if (container.dataset.sig !== sig) {
       container.dataset.sig = sig;
-      container.innerHTML = live
-        .map((s) => this._cell(s.key, s.label, s.icon, s.digits, s.suffixUnit !== false))
-        .join("");
+      container.innerHTML = live.map((s) => this._cell(s)).join("");
       this._bindCells();
       return;
     }
@@ -2004,7 +2067,7 @@ const EDITOR_CSS = `
     margin-top: var(--ha-space-2, 8px);
   }
   .ecw-row {
-    display: flex; align-items: center;
+    display: flex; align-items: center; flex-wrap: wrap;
     gap: var(--ha-space-2, 8px);
     padding: var(--ha-space-1, 4px) var(--ha-space-2, 8px);
     background: var(--secondary-background-color);
@@ -2085,6 +2148,9 @@ const EDITOR_CSS = `
   }
   .ecw-band select { cursor: pointer; }
   .ecw-band option { background: var(--card-background-color); color: var(--primary-text-color); }
+  /* The row is flex, so the picker takes a full basis to wrap onto its
+   * own line beneath the name and buttons. */
+  .ecw-row .ecw-picker { flex: 1 0 100%; display: block; }
   .ecw-band .ecw-desc {
     grid-column: 1 / -1;
     font-size: var(--ha-font-size-s, 12px);
@@ -2165,7 +2231,7 @@ class EcowittWeatherCardEditor extends EcowittCardEditor {
   _metricsSignature() {
     /* Labels included: a rename must repaint the row's placeholder state. */
     return JSON.stringify([
-      this._entries().map((e) => [e.key, e.label]),
+      this._entries().map((e) => [e.key || e.entity, e.label, !!e.custom]),
       Object.keys(this._ids || {}).sort(),
     ]);
   }
@@ -2174,9 +2240,15 @@ class EcowittWeatherCardEditor extends EcowittCardEditor {
     return metricEntries(this._config);
   }
 
+  _entityName(entityId) {
+    const st = entityId && this._hass ? this._hass.states[entityId] : null;
+    return st ? st.attributes.friendly_name : null;
+  }
+
   /* The stored form: bare keys, or {metric,name} where a name was set. */
   _stored() {
-    return this._entries().map((e) => metricEntryFor(e.key, e.label));
+    return this._entries().map((e) =>
+      e.custom ? customEntryFor(e.entity, e.label) : metricEntryFor(e.key, e.label));
   }
 
   /* `rerender` is false while typing a name: rebuilding the list would
@@ -2198,9 +2270,21 @@ class EcowittWeatherCardEditor extends EcowittCardEditor {
 
   _rename(index, name) {
     const entries = this._stored();
-    const key = this._entries()[index].key;
-    entries[index] = metricEntryFor(key, name);
+    const entry = this._entries()[index];
+    entries[index] = entry.custom
+      ? customEntryFor(entry.entity, name)
+      : metricEntryFor(entry.key, name);
     this._setEntries(entries, false);
+  }
+
+  /* Changing which entity a custom tile points at. Unlike typing a name,
+   * this repaints: the row's fallback label comes from the entity, so it
+   * is wrong until the row is rebuilt. Picking closes the dropdown, so
+   * there is no focus to lose. */
+  _repoint(index, entity) {
+    const entries = this._stored();
+    entries[index] = customEntryFor(entity, this._entries()[index].label);
+    this._setEntries(entries, true);
   }
 
   _renderMetrics() {
@@ -2221,7 +2305,7 @@ class EcowittWeatherCardEditor extends EcowittCardEditor {
     entries.forEach((entry, i) => {
       const key = entry.key;
       const m = METRIC_CATALOGUE[key];
-      const missing = this._ids && !this._ids[key];
+      const missing = !entry.custom && this._ids && !this._ids[key];
       const row = document.createElement("div");
       row.className = "ecw-row";
 
@@ -2234,16 +2318,22 @@ class EcowittWeatherCardEditor extends EcowittCardEditor {
       grip.addEventListener("mousedown", () => { row.draggable = true; });
 
       const icon = document.createElement("ha-icon");
-      icon.setAttribute("icon", m.icon);
+      icon.setAttribute("icon", entry.custom ? "mdi:tag-outline" : m.icon);
+
+      /* A custom tile's own name is optional: blank means "whatever the
+       * entity calls itself", so the placeholder shows that fallback. */
+      const fallbackName = entry.custom
+        ? (this._entityName(entry.entity) || entry.entity || "Entity name")
+        : m.label;
 
       const label = document.createElement("input");
       label.className = "ecw-label";
       label.type = "text";
-      label.value = entry.label;
-      label.placeholder = m.label;
+      label.value = entry.label || "";
+      label.placeholder = fallbackName;
       label.title = missing
         ? `${m.label} — not reported by this device`
-        : `Shown as "${entry.label}" on the card`;
+        : `Shown as "${entry.label || fallbackName}" on the card`;
       if (missing) label.classList.add("missing");
       label.addEventListener("input", () => this._rename(i, label.value));
       /* Blur repaints, collapsing an emptied field back to the default. */
@@ -2263,6 +2353,20 @@ class EcowittWeatherCardEditor extends EcowittCardEditor {
         return b;
       };
 
+      /* Custom tiles pick their entity on a second line. */
+      let picker = null;
+      if (entry.custom) {
+        picker = document.createElement("ha-selector");
+        picker.className = "ecw-picker";
+        picker.hass = this._hass;
+        picker.selector = { entity: {} };
+        picker.value = entry.entity || "";
+        picker.addEventListener("value-changed", (ev) => {
+          const v = ev.detail && ev.detail.value;
+          if (v) this._repoint(i, v);
+        });
+      }
+
       row.append(
         grip, icon, label, note,
         mk("mdi:arrow-up", "Move up", i === 0, () => this._move(i, i - 1)),
@@ -2270,6 +2374,7 @@ class EcowittWeatherCardEditor extends EcowittCardEditor {
         mk("mdi:close", "Remove", false, () =>
           this._setEntries(this._stored().filter((_, j) => j !== i)))
       );
+      if (picker) row.appendChild(picker);
 
       row.addEventListener("dragstart", (ev) => {
         this._dragFrom = i;
@@ -2305,6 +2410,16 @@ class EcowittWeatherCardEditor extends EcowittCardEditor {
     const available = Object.keys(METRIC_CATALOGUE).filter((k) => !chosen.has(k));
     const present = available.filter((k) => this._ids && this._ids[k]);
     const absent = available.filter((k) => !this._ids || !this._ids[k]);
+
+    /* First, so it is not buried at the end of thirty catalogue chips. */
+    const custom = document.createElement("button");
+    custom.className = "ecw-chip";
+    custom.innerHTML = `<ha-icon icon="mdi:tag-plus-outline"></ha-icon>`;
+    custom.appendChild(document.createTextNode("Custom entity"));
+    custom.title = "Show any entity, not just this device's";
+    custom.addEventListener("click", () =>
+      this._setEntries([...this._stored(), { entity: "" }]));
+    add.appendChild(custom);
 
     [...present, ...absent].forEach((key) => {
       const m = METRIC_CATALOGUE[key];

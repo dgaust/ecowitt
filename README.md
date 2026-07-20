@@ -120,6 +120,25 @@ metrics:
   - uv
 ```
 
+### Custom tiles
+
+A tile isn't limited to the catalogue, or even to the card's device. Click
+**Custom entity** in the editor and pick anything from the entity picker, or
+write it directly:
+
+```yaml
+metrics:
+  - hum_out
+  - entity: sensor.rainwater_tank_level
+  - entity: sensor.pool_temperature
+    name: Pool
+```
+
+A custom tile takes its label, icon and decimal places from the entity itself,
+so it usually needs nothing but the entity id. Give it a `name` to override the
+label — worth doing, since Home Assistant's friendly names are often long
+enough to truncate. Custom and catalogue tiles mix freely and reorder together.
+
 ### Renaming a tile
 
 A tile label is a single line and truncates with an ellipsis, so a long

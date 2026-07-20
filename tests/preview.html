@@ -107,6 +107,30 @@
         this.style.boxShadow = "0 1px 3px rgba(0,0,0,.12)";
       }
     });
+    /* Stand-in for the frontend's generic selector, enough to drive the
+     * custom-entity picker: a plain input that emits value-changed. */
+    customElements.define("ha-selector", class extends HTMLElement {
+      set selector(v) { this._selector = v; this._render(); }
+      set hass(v) { this._hass = v; }
+      set value(v) { this._value = v; if (this._input) this._input.value = v || ""; }
+      get value() { return this._value; }
+      _render() {
+        if (this._input) return;
+        this._input = document.createElement("input");
+        this._input.type = "text";
+        this._input.placeholder = "entity id";
+        this._input.style.cssText = "width:100%;background:none;border:1px solid var(--divider-color);color:inherit;font:inherit;padding:4px;border-radius:4px";
+        this._input.value = this._value || "";
+        this._input.addEventListener("change", () => {
+          this._value = this._input.value;
+          this.dispatchEvent(new CustomEvent("value-changed", {
+            detail: { value: this._input.value }, bubbles: true, composed: true,
+          }));
+        });
+        this.appendChild(this._input);
+      }
+    });
+
     /* ha-form is a no-op here; the editor's own markup is what we exercise. */
     customElements.define("ha-form", class extends HTMLElement {
       connectedCallback() {

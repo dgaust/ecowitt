@@ -42,7 +42,7 @@ vm.runInContext(
     " DEFAULT_METRICS, withHubMetrics, parseScale, bandFor, scaleColor," +
     " numberLocale," +
     " scaleGradient, scaleTicks, DEFAULT_SOIL_SCALE, DEFAULT_UV_SCALE," +
-    " NEEDLE_STYLES, DEFAULT_NEEDLE };",
+    " NEEDLE_STYLES, DEFAULT_NEEDLE, customEntryFor, CLASS_ICONS };",
   ctx
 );
 const api = ctx.__api;
@@ -280,6 +280,68 @@ check("duplicates are left alone", keysOf({ metrics: ["uv", "uv"] }), "uv,uv");
 
 assert("every default metric is in the catalogue",
   DEFAULT_METRICS.every((k) => METRIC_CATALOGUE[k]));
+
+/* ---- custom entity tiles ---- */
+console.log("custom tiles");
+const { customEntryFor } = api;
+const customCfg = { metrics: ["uv", { entity: "sensor.anything", name: "My thing" }] };
+const customEntries = metricEntries(customCfg);
+check("a custom entry survives parsing", customEntries.length, 2);
+assert("it is flagged custom", customEntries[1].custom === true);
+check("it keeps its entity", customEntries[1].entity, "sensor.anything");
+check("and its name", customEntries[1].label, "My thing");
+assert("a custom entry has no catalogue key", customEntries[1].key === undefined);
+/* No name means "ask the entity", which can only happen at render time. */
+check("a nameless custom entry defers its label",
+  metricEntries({ metrics: [{ entity: "sensor.x" }] })[0].label, null);
+assert("an object with neither entity nor metric is dropped",
+  metricEntries({ metrics: [{ name: "orphan" }] }).length === 0);
+/* A freshly added custom tile has no entity yet. The row must survive so
+ * the editor has somewhere to put the picker; the card just renders no
+ * tile for it. */
+const placeholder = metricEntries({ metrics: [{ entity: "" }] });
+check("an empty custom entry is kept as a placeholder", placeholder.length, 1);
+assert("and is still flagged custom", placeholder[0].custom === true);
+
+check("stored without a name stays bare",
+  JSON.stringify(customEntryFor("sensor.x", "")), '{"entity":"sensor.x"}');
+check("stored with a name keeps it",
+  JSON.stringify(customEntryFor("sensor.x", " Label ")),
+  '{"entity":"sensor.x","name":"Label"}');
+/* Catalogue and custom tiles must mix in one list, in order. */
+check("mixed list keeps order",
+  metricEntries({ metrics: ["uv", { entity: "sensor.a" }, "vpd"] })
+    .map((e) => e.key || e.entity).join(","),
+  "uv,sensor.a,vpd");
+
+/* Rendering resolves a custom tile from the entity itself. */
+const WeatherCard = ctx.customElements.get("ecowitt-weather-card");
+const fake = Object.create(WeatherCard.prototype);
+fake._ids = { uv: "sensor.ecowitt_uv_index_13360" };
+fake._hass = { states: {
+  "sensor.custom_thing": {
+    state: "12.5",
+    attributes: { friendly_name: "Pool temperature", device_class: "temperature", unit_of_measurement: "°C" },
+  },
+  "sensor.iconless": { state: "3", attributes: {} },
+  "sensor.ecowitt_uv_index_13360": { state: "7", attributes: {} },
+} };
+const resolved = fake._resolveSpec({ custom: true, entity: "sensor.custom_thing", label: null, icon: null, digits: null });
+check("label falls back to the friendly name", resolved.label, "Pool temperature");
+check("icon comes from the device class", resolved.icon, "mdi:thermometer");
+check("an explicit name wins",
+  fake._resolveSpec({ custom: true, entity: "sensor.custom_thing", label: "Pool", icon: null, digits: null }).label, "Pool");
+check("an entity with nothing to go on still gets an icon",
+  fake._resolveSpec({ custom: true, entity: "sensor.iconless", label: null, icon: null, digits: null }).icon, "mdi:gauge");
+check("and falls back to its id for a label",
+  fake._resolveSpec({ custom: true, entity: "sensor.iconless", label: null, icon: null, digits: null }).label, "sensor.iconless");
+assert("an entity that does not exist is skipped",
+  fake._resolveSpec({ custom: true, entity: "sensor.missing", label: null }) === null);
+/* digits: 0 is falsy, so the fallback must test for an integer. */
+check("zero precision is respected",
+  fake._resolveSpec({ key: "uv", label: "UV", icon: "x", digits: 0 }).digits, 0);
+check("absent precision defaults to one",
+  fake._resolveSpec({ custom: true, entity: "sensor.custom_thing", label: null, digits: null }).digits, 1);
 
 /* ---- per-tile name overrides ---- */
 console.log("tile names");
