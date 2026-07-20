@@ -14,7 +14,7 @@
  * hard-codes an entity id and extra probes work without a code change.
  */
 
-const CARD_VERSION = "1.19.1";
+const CARD_VERSION = "1.20.0";
 
 /* Plain text rather than a %c-styled banner: console styling can only take
  * literal colours, and nothing in this file should hardcode one. */
@@ -27,11 +27,17 @@ console.info(`ECOWITT-CARDS ${CARD_VERSION}`);
  * overwritten once claimed. Order matters where one id contains
  * another: soil_moisture_battery before soil_moisture, wind_direction_avg
  * before wind_direction, capacitor_voltage before voltage.
+ *
+ * A rule may also demand a device_class. Third-party probes ship metadata
+ * entities alongside the readings — "battery_type" holding "2x AAA", or
+ * "battery_last_replaced" holding a date — and on a name match alone those
+ * can claim the battery slot and be rendered as a percentage. Requiring
+ * the class means only a real battery sensor can.
  * ------------------------------------------------------------------ */
 
 const SENSOR_RULES = [
-  ["soil_battery", /soil_moisture_battery/],
-  ["soil_moisture", /soil_moisture/],
+  ["soil_battery", /soil_moisture_battery/, "battery"],
+  ["soil_moisture", /soil_moisture|moisture/, "moisture"],
   ["wind_dir_avg", /wind_direction_avg/],
   ["wind_dir", /wind_direction/],
   ["wind_gust", /wind_gust/],
@@ -57,9 +63,9 @@ const SENSOR_RULES = [
   ["press_rel", /pressure_relative/],
   ["press_abs", /pressure_absolute/],
   ["vpd", /vpd/],
-  ["cap_voltage", /capacitor_voltage/],
-  ["voltage", /voltage/],
-  ["battery", /battery/],
+  ["cap_voltage", /capacitor_voltage/, "voltage"],
+  ["voltage", /voltage/, "voltage"],
+  ["battery", /battery/, "battery"],
   ["signal", /signal_strength/],
   ["channel", /channel/],
   ["hw_id", /hardware_id/],
@@ -99,17 +105,16 @@ function discover(hass, deviceId) {
     if (domain !== "sensor" && domain !== "binary_sensor") continue;
 
     const rules = domain === "binary_sensor" ? BINARY_RULES : SENSOR_RULES;
+    const deviceClass = hass.states[entityId].attributes.device_class;
     let claimed = false;
-    for (const [key, re] of rules) {
-      if (re.test(entityId) && found[key] === undefined) {
-        found[key] = entityId;
-        claimed = true;
-        break;
-      }
-      if (re.test(entityId)) {
-        claimed = true; // matched a rule but the slot is taken
-        break;
-      }
+    for (const [key, re, requiredClass] of rules) {
+      if (!re.test(entityId)) continue;
+      /* Name matches but wrong kind of sensor: keep looking rather than
+       * letting it claim the slot. */
+      if (requiredClass && deviceClass !== requiredClass) continue;
+      if (found[key] === undefined) found[key] = entityId;
+      claimed = true; // matched; the slot may already be taken
+      break;
     }
 
     if (!claimed && domain === "sensor") {
@@ -188,10 +193,12 @@ function fmt(hass, entityId, fallbackDigits = 1) {
   }
 }
 
+/* Empty rather than a brand name when there is no device: a card pointed
+ * at loose entities should fall back to its own subject, not to "Ecowitt". */
 function deviceName(hass, deviceId) {
   const d = hass && hass.devices ? hass.devices[deviceId] : null;
-  if (!d) return "Ecowitt";
-  return d.name_by_user || d.name || "Ecowitt";
+  if (!d) return "";
+  return d.name_by_user || d.name || "";
 }
 
 const COMPASS = [
@@ -625,8 +632,14 @@ class EcowittBase extends HTMLElement {
     return { hass: {}, config: {} };
   }
 
+  /* Most cards need a device. A card that can be pointed at loose entities
+   * overrides this. */
+  _isConfigured(config) {
+    return !!(config && config.device);
+  }
+
   setConfig(config) {
-    if (!config || !config.device) {
+    if (!this._isConfigured(config)) {
       throw new Error("Select a device in the card editor.");
     }
     this._config = config;
@@ -639,6 +652,7 @@ class EcowittBase extends HTMLElement {
     this._ids = withHubMetrics(
       hass, this._config.device, discover(hass, this._config.device)
     );
+    this._applyEntityOverrides();
 
     /* A device with nothing recognisable behind it is almost always the
      * wrong device rather than a broken sensor, and a card full of dashes
@@ -656,15 +670,26 @@ class EcowittBase extends HTMLElement {
     this._bindCells();
   }
 
+  /* Entities named directly in the config win over anything discovery
+   * found, and work with no device at all. */
+  _applyEntityOverrides() {
+    const map = this.constructor.entityConfig;
+    if (!map) return;
+    for (const [option, key] of Object.entries(map)) {
+      const entityId = this._config[option];
+      if (typeof entityId === "string" && entityId) this._ids[key] = entityId;
+    }
+  }
+
   _renderEmpty() {
     const name = deviceName(this._hass, this._config.device);
     this._shadow().innerHTML = `
       <style>${BASE_CSS}</style>
       <ha-card>
-        <div class="head"><div class="title">${this._config.name || name}</div></div>
+        <div class="head"><div class="title">${this._config.name || name || "Ecowitt"}</div></div>
         <div class="warn">
-          No Ecowitt sensors found on this device. Pick the device that owns the
-          readings you want in the card editor.
+          No sensors found. Pick the device that owns the readings you want in
+          the card editor, or name the entities directly.
         </div>
       </ha-card>`;
   }
@@ -800,7 +825,7 @@ class EcowittBase extends HTMLElement {
   _headHtml(subject, preferDevice = false) {
     const title =
       this._config.name ||
-      (preferDevice ? deviceName(this._hass, this._config.device) : subject) ||
+      (preferDevice ? deviceName(this._hass, this._config.device) : "") ||
       subject;
     const online = this._ids.online;
     let cls = "unknown";
@@ -821,7 +846,7 @@ class EcowittBase extends HTMLElement {
   /* Battery reads as a glance-level fact rather than a metric worth a tile,
    * so it sits in the header. It only earns colour once it matters. */
   _batteryChip() {
-    const id = this._ids.battery || this._ids.soil_battery;
+    const id = this._ids.soil_battery || this._ids.battery;
     if (!id) return "";
     const pct = num(this._hass, id);
     if (pct === null) return "";
@@ -1471,6 +1496,17 @@ class EcowittSolarCard extends EcowittBase {
  * ------------------------------------------------------------------ */
 
 class EcowittSoilCard extends EcowittBase {
+  /* Config options that name an entity outright, so the card works with any
+   * soil probe — Zigbee, Z-Wave, rtl_433 — not only an Ecowitt device. */
+  static get entityConfig() {
+    return { moisture: "soil_moisture", battery: "soil_battery" };
+  }
+
+  /* A named moisture entity is enough on its own; the device is optional. */
+  _isConfigured(config) {
+    return !!(config && (config.device || config.moisture));
+  }
+
   _build() {
     const s = this._shadow();
     s.innerHTML = `
@@ -1662,8 +1698,23 @@ class EcowittCardEditor extends HTMLElement {
       { name: "name", selector: { text: {} } },
     ];
 
-    /* Only the two cards that actually draw a compass. */
     const type = (this._config && this._config.type) || "";
+
+    /* The soil card works with any soil probe, so its device picker is not
+     * restricted to the Ecowitt integration, and it can be pointed at loose
+     * entities instead of a device. */
+    if (type.includes("soil-card")) {
+      schema[0] = {
+        name: "device",
+        selector: { device: {} },
+      };
+      schema.push(
+        { name: "moisture", selector: { entity: { domain: "sensor" } } },
+        { name: "battery", selector: { entity: { domain: "sensor" } } }
+      );
+    }
+
+    /* Only the two cards that actually draw a compass. */
     if (type.includes("wind-card") || type.includes("weather-card")) {
       schema.push({
         name: "needle",
@@ -1687,8 +1738,13 @@ class EcowittCardEditor extends HTMLElement {
     if (!this._form) {
       this._form = document.createElement("ha-form");
       this._form.computeLabel = (s) => {
-        if (s.name === "device") return "Ecowitt device";
+        if (s.name === "device") {
+          const t = (this._config && this._config.type) || "";
+          return t.includes("soil-card") ? "Device (optional)" : "Ecowitt device";
+        }
         if (s.name === "needle") return "Compass needle";
+        if (s.name === "moisture") return "Moisture sensor (overrides device)";
+        if (s.name === "battery") return "Battery sensor (overrides device)";
         return "Name (optional)";
       };
       this._form.addEventListener("value-changed", (ev) => {

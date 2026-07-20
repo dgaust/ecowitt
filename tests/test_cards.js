@@ -201,6 +201,66 @@ check("locale resolution: unset uses language",
 check("locale resolution: no locale object at all",
   api.numberLocale({}), undefined);
 
+/* ---- third-party soil probes ---- */
+console.log("third-party soil");
+const tp = JSON.parse(fs.readFileSync(path.join(__dirname, "fixtures", "third-party.json"), "utf8"));
+const tpEntities = Object.values(tp)[0].entities;
+
+/* HA gives no ordering guarantee for hass.entities, so build the probe in
+ * both the natural order and the awkward one where the metadata entities
+ * come first. Discovery must agree either way. */
+const probeHass = (order) => {
+  const h = { states: {}, entities: {}, devices: { probe: { id: "probe", name: "Sunflower" } } };
+  for (const e of order) {
+    h.entities[e.entity_id] = { device_id: "probe" };
+    h.states[e.entity_id] = {
+      state: e.state,
+      attributes: { unit_of_measurement: e.unit, device_class: e.device_class },
+    };
+  }
+  return h;
+};
+const natural = probeHass(tpEntities);
+const awkward = probeHass([...tpEntities].sort(
+  (a, b) => (/battery_type|last_replaced/.test(a.entity_id) ? -1 : 1)));
+
+const idsNatural = api.discover(natural, "probe");
+const idsAwkward = api.discover(awkward, "probe");
+
+check("moisture found on a Tuya probe",
+  idsNatural.soil_moisture, "sensor.outdoors_sunflower_moisture_soil_moisture");
+check("battery found", idsNatural.battery, "sensor.outdoors_sunflower_moisture_battery");
+/* The bug this guards: "battery_type" holds "2x AAA", which parses to 2 and
+ * would render as a critical 2% battery. */
+check("battery is order-independent", idsAwkward.battery, idsNatural.battery);
+assert("battery_type never claims the battery slot",
+  idsAwkward.battery !== "sensor.outdoors_sunflower_moisture_battery_type" &&
+  idsNatural.battery !== "sensor.outdoors_sunflower_moisture_battery_type");
+assert("a date entity never claims it either",
+  ![idsNatural.battery, idsAwkward.battery]
+    .includes("sensor.outdoors_sunflower_moisture_battery_last_replaced"));
+check("its soil temperature is picked up too",
+  idsNatural.temp_out, "sensor.outdoors_sunflower_moisture_temperature");
+
+/* Naming entities directly must work with no device at all. */
+const SoilCard = ctx.customElements.get("ecowitt-soil-card");
+const loose = Object.create(SoilCard.prototype);
+loose._config = { moisture: "sensor.my_probe", battery: "sensor.my_probe_batt" };
+loose._ids = {};
+loose._applyEntityOverrides();
+check("moisture override applies", loose._ids.soil_moisture, "sensor.my_probe");
+check("battery override applies", loose._ids.soil_battery, "sensor.my_probe_batt");
+assert("a moisture entity alone is a valid config",
+  SoilCard.prototype._isConfigured.call(loose, { moisture: "sensor.my_probe" }));
+assert("a device alone is still valid",
+  SoilCard.prototype._isConfigured.call(loose, { device: "abc" }));
+assert("neither is not",
+  !SoilCard.prototype._isConfigured.call(loose, { name: "x" }));
+/* Other cards still insist on a device. */
+const WindCard = ctx.customElements.get("ecowitt-wind-card");
+assert("the wind card still requires a device",
+  !WindCard.prototype._isConfigured.call({}, { moisture: "sensor.x" }));
+
 /* ---- configurable metric tiles ---- */
 console.log("metrics");
 const { metricEntries, metricEntryFor, METRIC_CATALOGUE, DEFAULT_METRICS } = api;

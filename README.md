@@ -201,6 +201,29 @@ built on the WS90 shows the live wet/dry indicator — that comes from the piezo
 `srain_piezo` flag, which a tipping bucket doesn't have. Both tiles are driven
 by discovery, so each card shows what its device actually has.
 
+## Soil probes that aren't Ecowitt
+
+The soil card works with any soil moisture sensor — Zigbee, Z-Wave, rtl_433,
+whatever — not only an Ecowitt WH51. Its device picker is not restricted to the
+Ecowitt integration, so in most cases selecting the device is enough: a moisture
+reading and a battery are found the same way they are on a WH51.
+
+Where a device groups things awkwardly, or there is no device at all, name the
+entities instead:
+
+```yaml
+type: custom:ecowitt-soil-card
+name: Sunflower bed
+moisture: sensor.sunflower_soil_moisture
+battery: sensor.sunflower_battery      # optional
+```
+
+`moisture` alone is a complete config — `device` becomes optional, and either
+entity overrides whatever discovery found. Both are in the card editor.
+
+Pair this with a `scale` suited to the bed in question, since a third-party
+probe's percentage is its own scale and won't line up with a WH51's.
+
 ## Scales
 
 The soil and solar cards draw a banded track: a coloured axis with a marker
