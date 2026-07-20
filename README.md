@@ -22,8 +22,11 @@ way, downwind, showing where the air is heading, which is what the Ecowitt
 console shows. So an easterly draws an arrow pointing west.
 
 Both conventions are used in the wild, and the difference is only in the
-drawing: the degrees are the same either way. The rows say "from E 89°" so the
-reading is unambiguous whichever way you read the needle.
+drawing: the degrees are the same either way. The text does not repeat
+"from" — by convention a wind direction already means the direction it blows
+from, so saying it again is redundant. What tells you which way to read the
+needle is the needle itself: its tail marks the source and its head the
+destination, and both markers carry a tooltip.
 
 **The faint dashed marker is the average direction over the last 10 minutes**,
 drawn with the same downwind convention as the solid needle. When the wind is

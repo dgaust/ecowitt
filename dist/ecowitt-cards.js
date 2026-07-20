@@ -14,7 +14,7 @@
  * hard-codes an entity id and extra probes work without a code change.
  */
 
-const CARD_VERSION = "1.19.0";
+const CARD_VERSION = "1.19.1";
 
 /* Plain text rather than a %c-styled banner: console styling can only take
  * literal colours, and nothing in this file should hardcode one. */
@@ -913,7 +913,10 @@ function compassSvg(size, dir, avgDir, style) {
    * Wind direction is reported as the bearing the wind comes FROM. The
    * arrow is drawn pointing the other way — downwind, where the air is
    * heading — which is what the Ecowitt console shows, so the two agree.
-   * The text says "from" so the reading is unambiguous either way.
+   * The text doesn't repeat "from": by convention a wind direction already
+   * means the direction it blows from, so saying it again is redundant.
+   * What disambiguates the drawing is the needle itself — its tail marks
+   * the source and its head the destination — plus the marker tooltips.
    */
   const arrow = (deg) => (deg + 180) % 360;
 
@@ -1027,7 +1030,7 @@ class EcowittWeatherCard extends EcowittBase {
     s.getElementById("windmini").innerHTML = `
       ${compassSvg(72, dir, num(h, this._ids.wind_dir_avg), this._config.needle)}
       <div class="lbl">${
-        dir === null ? "—" : `<span class="tap" data-entity="${this._ids.wind_dir}">from ${cardinal(dir)}</span>`
+        dir === null ? "—" : `<span class="tap" data-entity="${this._ids.wind_dir}">${cardinal(dir)}</span>`
       }${
         spd ? ` · <span class="tap" data-entity="${spd}">${fmt(h, spd, 1)} ${unit(h, spd)}</span>` : ""
       }</div>`;
@@ -1145,7 +1148,7 @@ class EcowittWindCard extends EcowittBase {
      * under the speed carries the description instead of repeating it. */
     s.getElementById("desc").textContent = windLabel(num(h, spd));
 
-    const bearing = (deg) => `from ${cardinal(deg)} ${Math.round(deg)}°`;
+    const bearing = (deg) => `${cardinal(deg)} ${Math.round(deg)}°`;
     const rows = [];
     if (this._ids.wind_dir && dir !== null) {
       rows.push({ id: this._ids.wind_dir, label: "Direction", value: bearing(dir) });
